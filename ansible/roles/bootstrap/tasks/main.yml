@@ -9,3 +9,7 @@
       - tar
       - unzip
     state: present
+
+- name: Configure hostname
+  ansible.builtin.hostname:
+    name: "{{ server_hostname }}"
