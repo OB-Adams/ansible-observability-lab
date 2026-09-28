@@ -1,0 +1,6 @@
+- name: Bootstrap Linux Servers
+  hosts: all
+  become: true
+
+  roles:
+    - bootstrap

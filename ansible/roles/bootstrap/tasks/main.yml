@@ -1,0 +1,11 @@
+- name: Display operating system information
+  ansible.builtin.debug:
+    msg: "Managing {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}"
+
+- name: Install baseline packages
+  ansible.builtin.package:
+    name:
+      - curl
+      - tar
+      - unzip
+    state: present
