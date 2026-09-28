@@ -33,3 +33,34 @@
   loop:
     - /opt/observability
     - /etc/observability
+
+- name: Enable and start firewalld
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+  when: ansible_facts["os_family"] == "RedHat" 
+
+- name: Allow SSH through firewalld
+  ansible.posix.firewalld:
+    port: "{{ ssh_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: ansible_facts["os_family"] == "RedHat"
+
+- name: Allow SSH through ufw
+  community.general.ufw:
+    state: enabled
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+  when: ansible_facts["os_family"] == "Debian"
+
+- name: Enable and start ufw
+  ansible.builtin.service:
+    name: ufw
+    state: started
+    enabled: true
+  when: ansible_facts["os_family"] == "Debian"
+
