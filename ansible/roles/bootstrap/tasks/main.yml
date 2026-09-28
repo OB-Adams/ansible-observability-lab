@@ -21,3 +21,15 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Create observability directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+  loop:
+    - /opt/observability
+    - /etc/observability
