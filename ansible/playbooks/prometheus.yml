@@ -1,0 +1,6 @@
+- name: Install and configure Prometheus
+  hosts: observability
+  become: true
+
+  roles:
+    - prometheus

@@ -1,0 +1,12 @@
+prometheus_version: "3.8.1"
+prometheus_user: prometheus
+prometheus_group: prometheus
+
+prometheus_install_dir: /opt/prometheus
+prometheus_config_dir: /etc/prometheus
+prometheus_data_dir: /var/lib/prometheus
+
+prometheus_config_file: /etc/prometheus/prometheus.yml
+prometheus_service_name: prometheus
+
+prometheus_port: 9090
