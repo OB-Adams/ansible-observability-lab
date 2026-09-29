@@ -1,0 +1,6 @@
+- name: Install and configure Loki
+  hosts: observability
+  become: true
+
+  roles:
+    - loki

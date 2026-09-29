@@ -1,0 +1,17 @@
+[Unit]
+Description=Loki Log Aggregation
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User={{ loki_user }}
+Group={{ loki_group }}
+Type=simple
+ExecStart={{ loki_install_dir }}/loki \
+  -config.file={{ loki_config_file }}
+
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
