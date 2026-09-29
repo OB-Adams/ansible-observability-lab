@@ -1,0 +1,4 @@
+journald_config_file: /etc/systemd/journald.conf
+journald_storage: persistent
+journald_system_max_use: 1G
+journald_runtime_max_use: 200M

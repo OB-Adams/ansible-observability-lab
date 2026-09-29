@@ -1,0 +1,6 @@
+- name: Configure persistent systemd journal
+  hosts: all
+  become: true
+
+  roles:
+    - journald
