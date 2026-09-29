@@ -1,0 +1,98 @@
+- name: Install Grafana Alloy repository on Debian systems
+  when: ansible_facts.os_family == "Debian"
+  block:
+    - name: Ensure python3-debian is present (needed by deb822_repository)
+      ansible.builtin.apt:
+        name: python3-debian
+        state: present
+        update_cache: true
+
+    - name: Configure Grafana APT repository
+      ansible.builtin.deb822_repository:
+        name: grafana
+        types: deb
+        uris: https://apt.grafana.com
+        suites: stable
+        components: main
+        signed_by: "{{ grafana_apt_key_url }}"
+        state: present
+
+    - name: Update APT package cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install Grafana Alloy
+      ansible.builtin.apt:
+        name: "{{ alloy_package_name }}"
+        state: present
+
+
+- name: Install Grafana Alloy repository on RedHat systems
+  when: ansible_facts.os_family == "RedHat"
+  block:
+    - name: Import Grafana RPM GPG key
+      ansible.builtin.command: "rpm --import {{ grafana_rpm_key_url }}"
+      changed_when: false
+
+    - name: Configure Grafana YUM repository
+      ansible.builtin.yum_repository:
+        name: grafana
+        description: Grafana
+        baseurl: https://rpm.grafana.com
+        enabled: true
+        repo_gpgcheck: true
+        gpgcheck: true
+        gpgkey: "{{ grafana_rpm_key_url }}"
+        sslverify: true
+        sslcacert: /etc/pki/tls/certs/ca-bundle.crt
+
+    - name: Update DNF package cache
+      ansible.builtin.dnf:
+        update_cache: true
+
+    - name: Install Grafana Alloy
+      ansible.builtin.dnf:
+        name: "{{ alloy_package_name }}"
+        state: present
+
+
+- name: Ensure Alloy is a member of the adm group
+  ansible.builtin.user:
+    name: alloy
+    groups: adm
+    append: true
+  when: ansible_facts.os_family == "Debian"
+
+
+- name: Ensure Alloy is a member of the systemd-journal group
+  ansible.builtin.user:
+    name: alloy
+    groups: systemd-journal
+    append: true
+
+
+- name: Ensure Alloy configuration directory exists
+  ansible.builtin.file:
+    path: "{{ alloy_config_dir }}"
+    state: directory
+    owner: root
+    group: alloy
+    mode: "0750"
+
+
+- name: Deploy Alloy configuration
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: "{{ alloy_config_file }}"
+    owner: root
+    group: alloy
+    mode: "0640"
+  notify: Restart Alloy
+
+
+- name: Ensure Alloy service is enabled and started
+  ansible.builtin.systemd_service:
+    name: "{{ alloy_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true

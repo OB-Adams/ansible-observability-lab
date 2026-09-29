@@ -1,0 +1,10 @@
+loki.source.journal "journald" {
+  forward_to = []
+
+  max_age = "{{ alloy_journal_max_age }}"
+
+  labels = {
+    host      = "{{ inventory_hostname }}",
+    component = "journald",
+  }
+}

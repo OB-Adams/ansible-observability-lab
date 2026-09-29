@@ -1,0 +1,6 @@
+- name: Configure Grafana Alloy
+  hosts: all
+  become: true
+
+  roles:
+    - alloy
