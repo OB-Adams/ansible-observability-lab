@@ -9,4 +9,12 @@ grafana_port: 3000
 grafana_apt_key_url: https://apt.grafana.com/gpg-full.key
 grafana_apt_keyring: /etc/apt/keyrings/grafana.asc
 
-grafana_rpm_key_url: https://rpm.grafana.com/gpg.key
+grafana_provisioning_dir: /etc/grafana/provisioning
+
+grafana_datasources_dir: /etc/grafana/provisioning/datasources
+
+grafana_datasources_file: /etc/grafana/provisioning/datasources/datasources.yml
+
+grafana_prometheus_url: http://localhost:9090
+
+grafana_loki_url: http://localhost:3100
