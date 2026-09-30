@@ -10,3 +10,5 @@ prometheus_config_file: /etc/prometheus/prometheus.yml
 prometheus_service_name: prometheus
 
 prometheus_port: 9090
+prometheus_alertmanager_url: localhost:9093
+prometheus_rules_file: /etc/prometheus/rules/node-alerts.yml
