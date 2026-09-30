@@ -4,6 +4,8 @@ alloy_service_name: alloy
 alloy_config_dir: /etc/alloy
 alloy_config_file: /etc/alloy/config.alloy
 
+alloy_loki_endpoint: "http://192.168.0.30:3100/loki/api/v1/push"
+
 alloy_journal_max_age: 12h
 
 grafana_apt_key_url: https://apt.grafana.com/gpg-full.key

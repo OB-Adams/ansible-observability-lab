@@ -1,10 +1,16 @@
 loki.source.journal "journald" {
-  forward_to = []
+  forward_to = [loki.write.default.receiver]
 
   max_age = "{{ alloy_journal_max_age }}"
 
   labels = {
     host      = "{{ inventory_hostname }}",
     component = "journald",
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "{{ alloy_loki_endpoint }}"
   }
 }
