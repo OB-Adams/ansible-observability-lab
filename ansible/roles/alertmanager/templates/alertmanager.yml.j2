@@ -2,7 +2,10 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: default
+  receiver: discord
 
 receivers:
-  - name: default
+  - name: discord
+    discord_configs:
+      - webhook_url: "{{ alertmanager_discord_webhook_url }}"
+        send_resolved: {{ alertmanager_discord_send_resolved }}

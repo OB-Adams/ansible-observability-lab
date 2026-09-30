@@ -51,6 +51,15 @@
     mode: "0755"
   notify: Restart Alertmanager
 
+- name: Install amtool binary
+  ansible.builtin.copy:
+    src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}/amtool"
+    dest: "{{ alertmanager_install_dir }}/amtool"
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Deploy Alertmanager configuration
   ansible.builtin.template:
     src: alertmanager.yml.j2
