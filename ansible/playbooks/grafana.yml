@@ -1,0 +1,6 @@
+- name: Configure Grafana
+  hosts: observability
+  become: true
+
+  roles:
+    - grafana

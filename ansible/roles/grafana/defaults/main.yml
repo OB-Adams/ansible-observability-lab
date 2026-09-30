@@ -1,0 +1,12 @@
+grafana_package_name: grafana
+grafana_service_name: grafana-server
+
+grafana_config_dir: /etc/grafana
+grafana_config_file: /etc/grafana/grafana.ini
+
+grafana_port: 3000
+
+grafana_apt_key_url: https://apt.grafana.com/gpg-full.key
+grafana_apt_keyring: /etc/apt/keyrings/grafana.asc
+
+grafana_rpm_key_url: https://rpm.grafana.com/gpg.key
