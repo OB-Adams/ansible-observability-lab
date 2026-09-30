@@ -1,0 +1,17 @@
+alertmanager_version: "0.28.1"
+
+alertmanager_user: alertmanager
+alertmanager_group: alertmanager
+
+alertmanager_install_dir: /opt/alertmanager
+alertmanager_config_dir: /etc/alertmanager
+alertmanager_data_dir: /var/lib/alertmanager
+
+alertmanager_config_file: /etc/alertmanager/alertmanager.yml
+alertmanager_service_name: alertmanager
+
+alertmanager_port: 9093
+
+alertmanager_arch: arm64
+
+alertmanager_download_url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}.tar.gz"

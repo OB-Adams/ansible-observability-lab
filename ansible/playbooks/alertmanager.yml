@@ -1,0 +1,6 @@
+- name: Configure Alertmanager
+  hosts: observability
+  become: true
+
+  roles:
+    - alertmanager
