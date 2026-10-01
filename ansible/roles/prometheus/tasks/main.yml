@@ -37,20 +37,20 @@
 
 - name: Download Prometheus archive
   ansible.builtin.get_url:
-    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-arm64.tar.gz"
-    dest: "/tmp/prometheus-{{ prometheus_version }}.linux-arm64.tar.gz"
+    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
+    dest: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
     mode: "0644"
 
 - name: Extract Prometheus archive
   ansible.builtin.unarchive:
-    src: "/tmp/prometheus-{{ prometheus_version }}.linux-arm64.tar.gz"
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
     dest: /tmp
     remote_src: true
-    creates: "/tmp/prometheus-{{ prometheus_version }}.linux-arm64"
+    creates: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}"
 
 - name: Install Prometheus binary
   ansible.builtin.copy:
-    src: "/tmp/prometheus-{{ prometheus_version }}.linux-arm64/prometheus"
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/prometheus"
     dest: "{{ prometheus_install_dir }}/prometheus"
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_group }}"
@@ -60,7 +60,7 @@
 
 - name: Install promtool binary
   ansible.builtin.copy:
-    src: "/tmp/prometheus-{{ prometheus_version }}.linux-arm64/promtool"
+    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/promtool"
     dest: "{{ prometheus_install_dir }}/promtool"
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_group }}"

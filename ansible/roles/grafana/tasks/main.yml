@@ -1,3 +1,14 @@
+- name: Require a strong Grafana admin password
+  ansible.builtin.assert:
+    that:
+      - grafana_admin_password is defined
+      - grafana_admin_password | length >= 12
+      - grafana_admin_password != grafana_default_admin_password
+    fail_msg: >-
+      Set grafana_admin_password (12+ characters, not "admin") in Ansible Vault,
+      e.g. ansible-vault edit inventory/group_vars/observability.yml
+    quiet: true
+
 - name: Ensure APT keyring directory exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
@@ -47,6 +58,7 @@
     group: grafana
     mode: "0640"
   notify: Restart Grafana
+  no_log: true
 
 - name: Deploy Grafana datasource configuration
   ansible.builtin.template:
@@ -68,3 +80,9 @@
     name: "{{ grafana_service_name }}"
     enabled: true
     state: started
+
+- name: Apply pending Grafana restarts before checking the admin login
+  ansible.builtin.meta: flush_handlers
+
+- name: Ensure the Grafana admin password is set
+  ansible.builtin.include_tasks: admin_password.yml

@@ -12,7 +12,7 @@ alertmanager_service_name: alertmanager
 
 alertmanager_port: 9093
 
-alertmanager_arch: arm64
+alertmanager_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
 
 alertmanager_download_url: "https://github.com/prometheus/alertmanager/releases/download/v{{ alertmanager_version }}/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}.tar.gz"
 alertmanager_discord_send_resolved: true

@@ -1,6 +1,7 @@
-i127.0.0.1 localhost
+127.0.0.1 localhost
 127.0.1.1 {{ server_hostname }}
 
-192.168.0.20 observability
-192.168.0.10 rocky
-192.168.0.40 centos
+{% for host in groups['all'] %}
+{% set h = hostvars[host] %}
+{{ h.ansible_host }} {{ h.server_hostname }}{{ ' ' ~ host if host != h.server_hostname else '' }}
+{% endfor %}

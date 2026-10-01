@@ -1,7 +1,7 @@
 - name: Install Grafana Alloy repository on Debian systems
   when: ansible_facts.os_family == "Debian"
   block:
-    - name: Ensure python3-debian is present (needed by deb822_repository)
+    - name: Ensure python3-debian is present
       ansible.builtin.apt:
         name: python3-debian
         state: present
@@ -88,13 +88,6 @@
     group: alloy
     mode: "0640"
   notify: Restart Alloy
-
-- name: Allow Alloy through UFW
-  community.general.ufw:
-    rule: allow
-    port: "3100"
-    proto: tcp
-  when: ansible_facts["os_family"] == "Debian"
 
 - name: Ensure Alloy service is enabled and started
   ansible.builtin.systemd_service:

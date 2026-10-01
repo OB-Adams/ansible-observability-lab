@@ -1,4 +1,5 @@
 loki_version: "3.5.5"
+loki_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
 loki_user: loki
 loki_group: loki
 
@@ -11,4 +12,4 @@ loki_service_name: loki
 
 loki_port: 3100
 
-loki_download_url: "https://github.com/grafana/loki/releases/download/v{{ loki_version }}/loki-linux-arm64.zip"
+loki_download_url: "https://github.com/grafana/loki/releases/download/v{{ loki_version }}/loki-linux-{{ loki_arch }}.zip"

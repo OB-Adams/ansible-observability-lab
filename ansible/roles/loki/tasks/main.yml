@@ -38,19 +38,19 @@
 - name: Download Loki archive
   ansible.builtin.get_url:
     url: "{{ loki_download_url }}"
-    dest: "/tmp/loki-linux-arm64.zip"
+    dest: "/tmp/loki-linux-{{ loki_arch }}.zip"
     mode: "0644"
 
 - name: Extract Loki archive
   ansible.builtin.unarchive:
-    src: "/tmp/loki-linux-arm64.zip"
+    src: "/tmp/loki-linux-{{ loki_arch }}.zip"
     dest: "{{ loki_install_dir }}"
     remote_src: true
-    creates: "{{ loki_install_dir }}/loki-linux-arm64"
+    creates: "{{ loki_install_dir }}/loki-linux-{{ loki_arch }}"
 
 - name: Install Loki binary
   ansible.builtin.copy:
-    src: "{{ loki_install_dir }}/loki-linux-arm64"
+    src: "{{ loki_install_dir }}/loki-linux-{{ loki_arch }}"
     dest: "{{ loki_install_dir }}/loki"
     remote_src: true
     owner: root
@@ -74,6 +74,12 @@
     group: root
     mode: "0644"
   notify: Restart Loki
+
+- name: Allow Loki through UFW
+  community.general.ufw:
+    rule: allow
+    port: "{{ loki_port }}"
+    proto: tcp
 
 - name: Ensure Loki service is enabled and started
   ansible.builtin.systemd_service:
