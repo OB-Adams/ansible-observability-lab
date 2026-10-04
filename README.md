@@ -210,7 +210,7 @@ Screenshots captured while building and testing the lab, in run order.
 
 ![Host firewall configured by the bootstrap role](docs/bootstrap-firewall.png)
 
-### 2. Metrics
+### 2. Node-Exporter/Prometheus
 
 ![Node Exporter running as a systemd service](docs/node-exporter-service.png)
 
@@ -218,13 +218,13 @@ Screenshots captured while building and testing the lab, in run order.
 
 ![Alert rules loaded in Prometheus](docs/prometheus-alert-rules.png)
 
-### 3. Logs
+### 3. Loki/Alloy
 
 ![Loki reporting ready](docs/loki-service-ready.png)
 
 ![Verifying the Alloy deployment](docs/alloy-deployment-verification.png)
 
-### 4. Dashboards and alerting
+### 4. Grafana/Alerts
 
 ![Grafana data sources provisioned by Ansible](docs/grafana-datasources-deployment.png)
 
