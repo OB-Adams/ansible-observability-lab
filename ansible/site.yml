@@ -1,0 +1,8 @@
+- ansible.builtin.import_playbook: playbooks/bootstrap.yml
+- ansible.builtin.import_playbook: playbooks/journald.yml
+- ansible.builtin.import_playbook: playbooks/node_exporter.yml
+- ansible.builtin.import_playbook: playbooks/loki.yml
+- ansible.builtin.import_playbook: playbooks/prometheus.yml
+- ansible.builtin.import_playbook: playbooks/alertmanager.yml
+- ansible.builtin.import_playbook: playbooks/grafana.yml
+- ansible.builtin.import_playbook: playbooks/alloy.yml
