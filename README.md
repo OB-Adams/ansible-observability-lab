@@ -255,7 +255,6 @@ Screenshots captured while building and testing the lab, in run order.
 This is a lab project, and some choices reflect that:
 
 - **SSH as root** with `host_key_checking = False`, which is convenient for throwaway VMs. A real deployment would use a non-root user with `become` and verified host keys.
-- **Static lab IPs.** Host addresses come from the inventory, but the Alloy role's `alloy_loki_endpoint` default still points at `192.168.0.30`. If the observability host's IP changes, override that variable in `group_vars/all.yml`.
 - **Grafana** listens on all interfaces over plain HTTP. Put it behind a reverse proxy with TLS before exposing it beyond a trusted network.
 - **Downloaded release archives are not checksum-verified**, and Prometheus, Loki, and Alertmanager configs are not validated before a service restarts.
 - **Loki upgrades:** the extract step is guarded by a filename that does not include the version, so changing `loki_version` alone will not replace an already-installed binary.
@@ -264,7 +263,6 @@ This is a lab project, and some choices reflect that:
 
 - Verify release downloads against the projects' published SHA-256 checksums
 - Validate configs with `promtool`, `amtool`, and Loki's `-verify-config` before they replace the live file
-- Derive the Alloy Loki endpoint from the inventory instead of a default IP
 - Make Loki binary upgrades version-aware
 - Add `ansible-lint` and Molecule tests, plus a CI workflow
 - Provision Grafana dashboards as code
