@@ -102,7 +102,7 @@ Each role follows the standard layout (`tasks/`, `defaults/`, `handlers/`, `temp
 | `journald` | all | Enables persistent journal storage with size limits (1G persistent, 200M runtime) |
 | `node_exporter` | all | Installs the release binary under a dedicated system user with a systemd unit, and opens port 9100 |
 | `alloy` | all | Adds the Grafana package repo for the OS family, installs Alloy, grants it journal access, and deploys a config that reads the journal and pushes to Loki |
-| `loki` | observability | Installs Loki as a systemd service with filesystem storage and opens port 3100 |
+| `loki` | `observability` | Installs Loki as a systemd service with filesystem storage, validates configuration before deployment, and restarts the service when the configuration changes. |
 | `prometheus` | observability | Installs Prometheus and `promtool`, generates scrape targets from the inventory, and deploys alert rules and the Alertmanager connection |
 | `alertmanager` | observability | Installs Alertmanager and `amtool` and routes alerts to a Discord webhook |
 | `grafana` | observability | Installs Grafana from the official APT repo, sets the admin password, disables sign-up and telemetry, and provisions Prometheus and Loki as data sources |
@@ -122,6 +122,38 @@ A starter rule, `NodeExporterDown`, fires at critical severity when any Node Exp
 ### Logs
 
 Alloy reads the systemd journal (the last 12 hours on startup) and pushes entries to Loki, labelled with `host` (the inventory hostname) and `component="journald"`.
+
+### Loki Configuration Validation
+
+The Loki role validates its rendered configuration before deploying it to the active configuration path.
+
+The deployment process is:
+
+1. Render the Loki configuration template to a candidate file.
+2. Validate the candidate using Loki's `-verify-config` option.
+3. Deploy the candidate only if validation succeeds.
+4. Notify the Loki restart handler only when the active configuration changes.
+5. Remove the temporary candidate file after deployment.
+
+If validation fails, Ansible stops before replacing the active configuration. This helps preserve the last known configuration and prevents an invalid candidate from triggering a service restart.
+
+Run the Loki playbook to validate and deploy the configuration:
+
+```bash
+ansible-playbook playbooks/loki.yml
+```
+
+Verify that Loki is running:
+
+```bash
+ansible ubuntu -m command -a "systemctl is-active loki"
+```
+
+Verify that Loki is ready to receive requests:
+
+```bash
+curl -fsS http://192.168.0.30:3100/ready
+```
 
 ## Requirements
 
@@ -193,6 +225,8 @@ Loki should be up before Alloy so logs have somewhere to go. Every playbook is s
 | --- | --- |
 | Service status | `systemctl status node_exporter alloy` (all hosts); `systemctl status prometheus loki alertmanager grafana-server` (ubuntu) |
 | Prometheus targets | `http://192.168.0.30:9090/targets`, all three `node` targets should be UP |
+| Loki version | `sudo /opt/loki/loki -version` |
+| Loki configuration validation | `ansible-playbook playbooks/loki.yml` |
 | Loki ready | `curl http://192.168.0.30:3100/ready` |
 | Alertmanager | `http://192.168.0.30:9093` |
 | Grafana | `http://192.168.0.30:3000`, log in as `admin` with your vaulted password; both data sources are provisioned |
@@ -256,14 +290,12 @@ This is a lab project, and some choices reflect that:
 
 - **SSH as root** with `host_key_checking = False`, which is convenient for throwaway VMs. A real deployment would use a non-root user with `become` and verified host keys.
 - **Grafana** listens on all interfaces over plain HTTP. Put it behind a reverse proxy with TLS before exposing it beyond a trusted network.
-- **Downloaded release archives are not checksum-verified**, and Prometheus, Loki, and Alertmanager configs are not validated before a service restarts.
-- **Loki upgrades:** the extract step is guarded by a filename that does not include the version, so changing `loki_version` alone will not replace an already-installed binary.
+- **Downloaded release archives are not checksum-verified**, and Prometheus and Alertmanager configs are not yet validated before deployment.
 
 ## Roadmap
 
 - Verify release downloads against the projects' published SHA-256 checksums
-- Validate configs with `promtool`, `amtool`, and Loki's `-verify-config` before they replace the live file
-- Make Loki binary upgrades version-aware
+- Validate Prometheus and Alertmanager configs with `promtool` and `amtool` before deployment
 - Add `ansible-lint` and Molecule tests, plus a CI workflow
 - Provision Grafana dashboards as code
 
