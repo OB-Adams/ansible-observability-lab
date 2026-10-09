@@ -60,14 +60,36 @@
     group: root
     mode: "0755"
 
-- name: Deploy Alertmanager configuration
+- name: Render Alertmanager configuration candidate
   ansible.builtin.template:
     src: alertmanager.yml.j2
+    dest: "{{ alertmanager_candidate_config_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Validate Alertmanager configuration candidate
+  ansible.builtin.command:
+    argv:
+      - "{{ alertmanager_install_dir }}/amtool"
+      - check-config
+      - "{{ alertmanager_candidate_config_file }}"
+  changed_when: false
+
+- name: Deploy validated Alertmanager configuration
+  ansible.builtin.copy:
+    src: "{{ alertmanager_candidate_config_file }}"
     dest: "{{ alertmanager_config_file }}"
+    remote_src: true
     owner: "{{ alertmanager_user }}"
     group: "{{ alertmanager_group }}"
     mode: "0640"
   notify: Restart Alertmanager
+
+- name: Remove Alertmanager configuration candidate
+  ansible.builtin.file:
+    path: "{{ alertmanager_candidate_config_file }}"
+    state: absent
 
 - name: Deploy Alertmanager systemd service
   ansible.builtin.template:

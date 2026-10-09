@@ -8,6 +8,7 @@ alertmanager_config_dir: /etc/alertmanager
 alertmanager_data_dir: /var/lib/alertmanager
 
 alertmanager_config_file: /etc/alertmanager/alertmanager.yml
+alertmanager_candidate_config_file: /tmp/alertmanager-config-candidate.yml
 alertmanager_service_name: alertmanager
 
 alertmanager_port: 9093

@@ -104,7 +104,7 @@ Each role follows the standard layout (`tasks/`, `defaults/`, `handlers/`, `temp
 | `alloy` | all | Adds the Grafana package repo for the OS family, installs Alloy, grants it journal access, and deploys a config that reads the journal and pushes to Loki |
 | `loki` | `observability` | Installs Loki as a systemd service with filesystem storage, validates configuration before deployment, and restarts the service when the configuration changes. |
 | `prometheus` | observability | Installs Prometheus and `promtool`, generates scrape targets from the inventory, validates configuration before deployment, and deploys alert rules and the Alertmanager connection |
-| `alertmanager` | observability | Installs Alertmanager and `amtool` and routes alerts to a Discord webhook |
+| `alertmanager` | observability | Installs Alertmanager and `amtool`, validates configuration before deployment, and routes alerts to a Discord webhook |
 | `grafana` | observability | Installs Grafana from the official APT repo, sets the admin password, disables sign-up and telemetry, and provisions Prometheus and Loki as data sources |
 
 ### Cross-distro handling
@@ -154,6 +154,43 @@ Verify that Loki is ready to receive requests:
 ```bash
 curl -fsS http://192.168.0.30:3100/ready
 ```
+### Alertmanager Configuration Validation
+
+The Alertmanager role validates its rendered configuration before deploying it to the active configuration path.
+
+The deployment process is:
+
+1. Render the Alertmanager configuration template to a candidate file.
+2. Validate the candidate using `amtool check-config`.
+3. Deploy the candidate only if validation succeeds.
+4. Notify the Alertmanager restart handler only when the active configuration changes.
+5. Remove the temporary candidate file after successful deployment.
+
+If validation fails, Ansible stops before replacing the active configuration. This helps preserve the last known configuration and prevents an invalid candidate from triggering a service restart.
+
+Run the Alertmanager playbook to validate and deploy the configuration:
+
+```bash
+ansible-playbook playbooks/alertmanager.yml
+```
+
+Verify the service is running:
+
+```bash
+ansible ubuntu -m command -a "systemctl is-active alertmanager"
+```
+
+Validate the active configuration directly:
+
+```bash
+ansible ubuntu -m command -a "/opt/alertmanager/amtool check-config /etc/alertmanager/alertmanager.yml"
+```
+
+Verify Alertmanager's health endpoint:
+
+```bash
+curl -fsS http://192.168.0.30:9093/-/healthy
+```
 
 ## Requirements
 
@@ -165,7 +202,7 @@ curl -fsS http://192.168.0.30:3100/ready
 - **Targets:** Ubuntu, Rocky Linux, and CentOS hosts reachable over SSH, with internet access to download release binaries from GitHub and packages from Grafana's repositories
 - **Architecture:** x86_64 and aarch64 are both supported
 
-## Secrets
+# Secrets
 
 Secrets live in an Ansible Vault file, `inventory/group_vars/observability.yml`. It must define:
 
@@ -230,6 +267,8 @@ Loki should be up before Alloy so logs have somewhere to go. Every playbook is s
 | Loki configuration validation | `ansible-playbook playbooks/loki.yml` |
 | Loki ready | `curl http://192.168.0.30:3100/ready` |
 | Alertmanager | `http://192.168.0.30:9093` |
+| Alertmanager configuration validation | `ansible-playbook playbooks/alertmanager.yml` |
+| Alertmanager health | `curl -fsS http://192.168.0.30:9093/-/healthy` |
 | Grafana | `http://192.168.0.30:3000`, log in as `admin` with your vaulted password; both data sources are provisioned |
 | Default login rejected | `curl -s -o /dev/null -w "%{http_code}" -u admin:admin http://192.168.0.30:3000/api/user` returns `401` |
 | Logs in Grafana (Explore, Loki) | `{component="journald", host="rocky"}` |
@@ -271,6 +310,10 @@ Screenshots captured while building and testing the lab, in run order.
 
 ![Alerts firing](docs/alerts-firing.png)
 
+![Alertmanager configuration validated before deployment](docs/alertmanager-config-validation.png)
+
+![Invalid Alertmanager configuration rejected before deployment](docs/alertmanager-invalid-config-rejected.png)
+
 ### 5. Idempotency
 
 ![A full re-run of the playbooks making no changes](docs/final-ansible-idempotency.png)
@@ -284,8 +327,8 @@ Screenshots captured while building and testing the lab, in run order.
 | Journald | [deployment](docs/journald-ansible-deployment.png), [configuration](docs/journald-configuration.png) |
 | Node Exporter | [firewall port](docs/node-exporter-firewall-port.png), [idempotency](docs/node-exporter-idempotency.png) |
 | Loki | [deployment](docs/loki-ansible-deployment.png) |
-| Prometheus | [deployment](docs/prometheus-ansible-deployment.png), [configuration](docs/prometheus-configuration.png) |
-| Alertmanager | [deployment](docs/alertmanager-deployment.png) |
+| Prometheus | [deployment](docs/prometheus-ansible-deployment.png), [configuration](docs/prometheus-configuration.png), [configuration validation](docs/prometheus-config-validation.png), [invalid configuration rejected](docs/prometheus-invalid-config-rejected.png) | |
+| Alertmanager | [deployment](docs/alertmanager-deployment.png), [configuration validation](docs/alertmanager-config-validation.png), [invalid configuration rejected](docs/alertmanager-invalid-config-rejected.png) |
 | Grafana | [deployment](docs/grafana-deployment.png) |
 | Alloy | [deployment](docs/alloy-ansible-deployment.png), [configuration](docs/alloy-configuration.png), [Loki configuration](docs/alloy-loki-configuration.png), [service](docs/alloy-service.png), [idempotency](docs/alloy-ansible-idempotency.png) |
 
@@ -297,12 +340,11 @@ This is a lab project, and some choices reflect that:
 
 - **SSH as root** with `host_key_checking = False`, which is convenient for throwaway VMs. A real deployment would use a non-root user with `become` and verified host keys.
 - **Grafana** listens on all interfaces over plain HTTP. Put it behind a reverse proxy with TLS before exposing it beyond a trusted network.
-- **Downloaded release archives are not checksum-verified**, and Alertmanager configuration is not yet validated before deployment.
+- **Downloaded release archives are not checksum-verified.** Release integrity verification remains future work.
 
 ## Roadmap
 
 - Verify release downloads against the projects' published SHA-256 checksums
-- Validate Alertmanager configuration with `amtool` before deployment
 - Add `ansible-lint` and Molecule tests, plus a CI workflow
 - Provision Grafana dashboards as code
 
