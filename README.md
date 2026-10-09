@@ -103,7 +103,7 @@ Each role follows the standard layout (`tasks/`, `defaults/`, `handlers/`, `temp
 | `node_exporter` | all | Installs the release binary under a dedicated system user with a systemd unit, and opens port 9100 |
 | `alloy` | all | Adds the Grafana package repo for the OS family, installs Alloy, grants it journal access, and deploys a config that reads the journal and pushes to Loki |
 | `loki` | `observability` | Installs Loki as a systemd service with filesystem storage, validates configuration before deployment, and restarts the service when the configuration changes. |
-| `prometheus` | observability | Installs Prometheus and `promtool`, generates scrape targets from the inventory, and deploys alert rules and the Alertmanager connection |
+| `prometheus` | observability | Installs Prometheus and `promtool`, generates scrape targets from the inventory, validates configuration before deployment, and deploys alert rules and the Alertmanager connection |
 | `alertmanager` | observability | Installs Alertmanager and `amtool` and routes alerts to a Discord webhook |
 | `grafana` | observability | Installs Grafana from the official APT repo, sets the admin password, disables sign-up and telemetry, and provisions Prometheus and Loki as data sources |
 
@@ -225,6 +225,7 @@ Loki should be up before Alloy so logs have somewhere to go. Every playbook is s
 | --- | --- |
 | Service status | `systemctl status node_exporter alloy` (all hosts); `systemctl status prometheus loki alertmanager grafana-server` (ubuntu) |
 | Prometheus targets | `http://192.168.0.30:9090/targets`, all three `node` targets should be UP |
+| Prometheus configuration validation | `promtool check config /etc/prometheus/prometheus.yml` on the observability host |
 | Loki version | `sudo /opt/loki/loki -version` |
 | Loki configuration validation | `ansible-playbook playbooks/loki.yml` |
 | Loki ready | `curl http://192.168.0.30:3100/ready` |
@@ -246,11 +247,17 @@ Screenshots captured while building and testing the lab, in run order.
 
 ### 2. Node-Exporter/Prometheus
 
+### 2. Node-Exporter/Prometheus
+
 ![Node Exporter running as a systemd service](docs/node-exporter-service.png)
 
 ![Prometheus targets page showing the scraped hosts](docs/prometheus-targets.png)
 
 ![Alert rules loaded in Prometheus](docs/prometheus-alert-rules.png)
+
+![Prometheus configuration validated before deployment](docs/prometheus-config-validation.png)
+
+![Invalid Prometheus configuration rejected before deployment](docs/prometheus-invalid-config-rejected.png)
 
 ### 3. Loki/Alloy
 
@@ -290,12 +297,12 @@ This is a lab project, and some choices reflect that:
 
 - **SSH as root** with `host_key_checking = False`, which is convenient for throwaway VMs. A real deployment would use a non-root user with `become` and verified host keys.
 - **Grafana** listens on all interfaces over plain HTTP. Put it behind a reverse proxy with TLS before exposing it beyond a trusted network.
-- **Downloaded release archives are not checksum-verified**, and Prometheus and Alertmanager configs are not yet validated before deployment.
+- **Downloaded release archives are not checksum-verified**, and Alertmanager configuration is not yet validated before deployment.
 
 ## Roadmap
 
 - Verify release downloads against the projects' published SHA-256 checksums
-- Validate Prometheus and Alertmanager configs with `promtool` and `amtool` before deployment
+- Validate Alertmanager configuration with `amtool` before deployment
 - Add `ansible-lint` and Molecule tests, plus a CI workflow
 - Provision Grafana dashboards as code
 

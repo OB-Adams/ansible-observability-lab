@@ -8,6 +8,7 @@ prometheus_config_dir: /etc/prometheus
 prometheus_data_dir: /var/lib/prometheus
 
 prometheus_config_file: /etc/prometheus/prometheus.yml
+prometheus_candidate_config_file: /tmp/prometheus-config-candidate.yml
 prometheus_service_name: prometheus
 
 prometheus_port: 9090
