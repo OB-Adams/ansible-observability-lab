@@ -27,19 +27,47 @@
     - path: "{{ alertmanager_data_dir }}"
       mode: "0750"
 
-- name: Download Alertmanager archive
+- name: Download Alertmanager checksum manifest
   ansible.builtin.get_url:
-    url: "{{ alertmanager_download_url }}"
-    dest: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}.tar.gz"
+    url: "{{ alertmanager_checksum_url }}"
+    dest: "{{ alertmanager_checksum_file }}"
     mode: "0644"
     timeout: 120
 
-- name: Extract Alertmanager archive
+- name: Read Alertmanager archive checksum
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-v"
+      - "filename={{ alertmanager_archive_filename }}"
+      - '$2 == filename { print $1 }'
+      - "{{ alertmanager_checksum_file }}"
+  register: alertmanager_expected_checksum
+  changed_when: false
+
+- name: Validate Alertmanager archive checksum entry
+  ansible.builtin.assert:
+    that:
+      - alertmanager_expected_checksum.stdout | length == 64
+      - alertmanager_expected_checksum.stdout is match('^[a-fA-F0-9]{64}$')
+    fail_msg: >-
+      No valid SHA-256 checksum was found for
+      {{ alertmanager_archive_filename }} in the checksum manifest.
+
+- name: Download and verify Alertmanager archive
+  ansible.builtin.get_url:
+    url: "{{ alertmanager_download_url }}"
+    dest: "{{ alertmanager_archive_path }}"
+    checksum: "sha256:{{ alertmanager_expected_checksum.stdout }}"
+    mode: "0644"
+    timeout: 120
+
+- name: Extract verified Alertmanager archive
   ansible.builtin.unarchive:
-    src: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}.tar.gz"
-    dest: /tmp
+    src: "{{ alertmanager_archive_path }}"
+    dest: "{{ alertmanager_download_dir }}"
     remote_src: true
-    creates: "/tmp/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}"
+    creates: "{{ alertmanager_download_dir }}/alertmanager-{{ alertmanager_version }}.linux-{{ alertmanager_arch }}"
 
 - name: Install Alertmanager binary
   ansible.builtin.copy:
