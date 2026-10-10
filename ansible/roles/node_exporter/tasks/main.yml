@@ -16,6 +16,7 @@
     url: "{{ node_exporter_checksum_url }}"
     dest: "{{ node_exporter_checksum_file }}"
     mode: "0644"
+    force: true
 
 - name: Read Node Exporter archive checksum
   ansible.builtin.command:
@@ -42,7 +43,6 @@
     url: "{{ node_exporter_download_url }}"
     dest: "{{ node_exporter_archive_path }}"
     checksum: "sha256:{{ node_exporter_expected_checksum.stdout }}"
-    force: true
     mode: "0644"
 
 - name: Extract verified Node Exporter archive
