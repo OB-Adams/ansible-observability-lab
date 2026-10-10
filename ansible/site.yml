@@ -1,8 +1,23 @@
-- ansible.builtin.import_playbook: playbooks/bootstrap.yml
-- ansible.builtin.import_playbook: playbooks/journald.yml
-- ansible.builtin.import_playbook: playbooks/node_exporter.yml
-- ansible.builtin.import_playbook: playbooks/loki.yml
-- ansible.builtin.import_playbook: playbooks/prometheus.yml
-- ansible.builtin.import_playbook: playbooks/alertmanager.yml
-- ansible.builtin.import_playbook: playbooks/grafana.yml
-- ansible.builtin.import_playbook: playbooks/alloy.yml
+- name: Bootstrap observability hosts
+  ansible.builtin.import_playbook: playbooks/bootstrap.yml
+
+- name: Configure persistent journald storage
+  ansible.builtin.import_playbook: playbooks/journald.yml
+
+- name: Install and configure Node Exporter
+  ansible.builtin.import_playbook: playbooks/node_exporter.yml
+
+- name: Install and configure Loki
+  ansible.builtin.import_playbook: playbooks/loki.yml
+
+- name: Install and configure Prometheus
+  ansible.builtin.import_playbook: playbooks/prometheus.yml
+
+- name: Install and configure Alertmanager
+  ansible.builtin.import_playbook: playbooks/alertmanager.yml
+
+- name: Install and configure Grafana
+  ansible.builtin.import_playbook: playbooks/grafana.yml
+
+- name: Configure Alloy log collection
+  ansible.builtin.import_playbook: playbooks/alloy.yml
