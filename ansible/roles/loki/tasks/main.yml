@@ -43,13 +43,52 @@
     group: root
     mode: "0755"
 
-- name: Download Loki archive
+- name: Retrieve Loki release metadata from GitHub
+  ansible.builtin.uri:
+    url: "{{ loki_release_api_url }}"
+    method: GET
+    headers:
+      Accept: application/vnd.github+json
+      X-GitHub-Api-Version: "2022-11-28"
+      User-Agent: ansible-observability-lab
+    return_content: true
+    status_code: 200
+    timeout: 30
+  register: loki_release_metadata
+  changed_when: false
+
+- name: Extract Loki archive SHA-256 digest
+  ansible.builtin.set_fact:
+    loki_expected_checksum: >-
+      {{
+        (
+          loki_release_metadata.json.assets
+          | selectattr('name', 'equalto', loki_archive_filename)
+          | map(attribute='digest')
+          | list
+          | first
+        ) | default('')
+      }}
+
+- name: Validate Loki archive checksum
+  ansible.builtin.assert:
+    that:
+      - loki_expected_checksum is string
+      - loki_expected_checksum is match('^sha256:[a-fA-F0-9]{64}$')
+    fail_msg: >-
+      No valid SHA-256 digest was found for
+      {{ loki_archive_filename }} in the GitHub release metadata
+      for Loki {{ loki_version }}.
+
+- name: Download and verify Loki archive
   ansible.builtin.get_url:
     url: "{{ loki_download_url }}"
     dest: "{{ loki_archive_path }}"
+    checksum: "{{ loki_expected_checksum }}"
     mode: "0644"
+    timeout: 120
 
-- name: Extract Loki archive
+- name: Extract verified Loki archive
   ansible.builtin.unarchive:
     src: "{{ loki_archive_path }}"
     dest: "{{ loki_release_dir }}"
