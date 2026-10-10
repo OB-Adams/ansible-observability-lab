@@ -32,6 +32,7 @@
     url: "{{ alertmanager_checksum_url }}"
     dest: "{{ alertmanager_checksum_file }}"
     mode: "0644"
+    force: true
     timeout: 120
 
 - name: Read Alertmanager archive checksum
@@ -95,6 +96,7 @@
     owner: root
     group: root
     mode: "0600"
+  changed_when: false
 
 - name: Validate Alertmanager configuration candidate
   ansible.builtin.command:
@@ -118,6 +120,7 @@
   ansible.builtin.file:
     path: "{{ alertmanager_candidate_config_file }}"
     state: absent
+  changed_when: false
 
 - name: Deploy Alertmanager systemd service
   ansible.builtin.template:

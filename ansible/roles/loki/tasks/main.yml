@@ -112,6 +112,7 @@
     owner: root
     group: root
     mode: "0600"
+  changed_when: false
 
 - name: Validate Loki configuration candidate
   ansible.builtin.command:
@@ -135,6 +136,7 @@
   ansible.builtin.file:
     path: "{{ loki_candidate_config_file }}"
     state: absent
+  changed_when: false
 
 - name: Deploy Loki systemd service
   ansible.builtin.template:

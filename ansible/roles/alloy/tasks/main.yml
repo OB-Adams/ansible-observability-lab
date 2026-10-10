@@ -20,6 +20,7 @@
     - name: Update APT package cache
       ansible.builtin.apt:
         update_cache: true
+      changed_when: false
 
     - name: Install Grafana Alloy
       ansible.builtin.apt:

@@ -39,6 +39,7 @@
   ansible.builtin.get_url:
     url: "{{ prometheus_checksum_url }}"
     dest: "{{ prometheus_checksum_file }}"
+    force: true
     mode: "0644"
 
 - name: Read Prometheus archive checksum
@@ -118,6 +119,7 @@
     owner: root
     group: root
     mode: "0600"
+  changed_when: false
 
 - name: Validate Prometheus configuration candidate
   ansible.builtin.command:
@@ -142,6 +144,7 @@
   ansible.builtin.file:
     path: "{{ prometheus_candidate_config_file }}"
     state: absent
+  changed_when: false
 
 - name: Deploy Prometheus systemd service
   ansible.builtin.template:

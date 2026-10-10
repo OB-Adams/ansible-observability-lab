@@ -11,4 +11,3 @@ node_exporter_archive_filename: "node_exporter-{{ node_exporter_version }}.linux
 node_exporter_archive_path: "{{ node_exporter_download_dir }}/{{ node_exporter_archive_filename }}"
 node_exporter_checksum_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/sha256sums.txt"
 node_exporter_checksum_file: "{{ node_exporter_download_dir }}/node_exporter-sha256sums.txt"
-node_exporter_test_checksum: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
