@@ -35,22 +35,49 @@
     group: "{{ prometheus_group }}"
     mode: "0755"
 
-- name: Download Prometheus archive
+- name: Download Prometheus checksum manifest
   ansible.builtin.get_url:
-    url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
-    dest: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
+    url: "{{ prometheus_checksum_url }}"
+    dest: "{{ prometheus_checksum_file }}"
     mode: "0644"
 
-- name: Extract Prometheus archive
+- name: Read Prometheus archive checksum
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-v"
+      - "filename={{ prometheus_archive_filename }}"
+      - '$2 == filename { print $1 }'
+      - "{{ prometheus_checksum_file }}"
+  register: prometheus_expected_checksum
+  changed_when: false
+
+- name: Validate Prometheus archive checksum entry
+  ansible.builtin.assert:
+    that:
+      - prometheus_expected_checksum.stdout | length == 64
+      - prometheus_expected_checksum.stdout is match('^[a-fA-F0-9]{64}$')
+    fail_msg: >-
+      No valid SHA-256 checksum was found for
+      {{ prometheus_archive_filename }} in the official checksum manifest.
+
+- name: Download and verify Prometheus archive
+  ansible.builtin.get_url:
+    url: "{{ prometheus_download_url }}"
+    dest: "{{ prometheus_archive_path }}"
+    checksum: "sha256:{{ prometheus_expected_checksum.stdout }}"
+    mode: "0644"
+
+- name: Extract verified Prometheus archive
   ansible.builtin.unarchive:
-    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
-    dest: /tmp
+    src: "{{ prometheus_archive_path }}"
+    dest: "{{ prometheus_download_dir }}"
     remote_src: true
-    creates: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}"
+    creates: "{{ prometheus_download_dir }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}"
 
 - name: Install Prometheus binary
   ansible.builtin.copy:
-    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/prometheus"
+    src: "{{ prometheus_download_dir }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/prometheus"
     dest: "{{ prometheus_install_dir }}/prometheus"
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_group }}"
@@ -60,7 +87,7 @@
 
 - name: Install promtool binary
   ansible.builtin.copy:
-    src: "/tmp/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/promtool"
+    src: "{{ prometheus_download_dir }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}/promtool"
     dest: "{{ prometheus_install_dir }}/promtool"
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_group }}"

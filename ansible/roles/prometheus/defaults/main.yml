@@ -1,4 +1,4 @@
-prometheus_version: "3.8.1"
+prometheus_version: "3.15.0"
 prometheus_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64'}[ansible_facts['architecture']] }}"
 prometheus_user: prometheus
 prometheus_group: prometheus
@@ -10,6 +10,13 @@ prometheus_data_dir: /var/lib/prometheus
 prometheus_config_file: /etc/prometheus/prometheus.yml
 prometheus_candidate_config_file: /tmp/prometheus-config-candidate.yml
 prometheus_service_name: prometheus
+prometheus_download_dir: /tmp
+prometheus_download_url: https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz
+prometheus_archive_filename: "prometheus-{{ prometheus_version }}.linux-{{ prometheus_arch }}.tar.gz"
+prometheus_archive_path: "{{ prometheus_download_dir }}/{{ prometheus_archive_filename }}"
+
+prometheus_checksum_url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/sha256sums.txt"
+prometheus_checksum_file: "{{ prometheus_download_dir }}/prometheus-sha256sums.txt"
 
 prometheus_port: 9090
 prometheus_alertmanager_url: localhost:9093
