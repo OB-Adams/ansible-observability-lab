@@ -7,3 +7,8 @@ node_exporter_listen_address: "0.0.0.0:9100"
 node_exporter_download_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
 node_exporter_download_dir: "/tmp"
 node_exporter_port: 9100
+node_exporter_archive_filename: "node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}.tar.gz"
+node_exporter_archive_path: "{{ node_exporter_download_dir }}/{{ node_exporter_archive_filename }}"
+node_exporter_checksum_url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/sha256sums.txt"
+node_exporter_checksum_file: "{{ node_exporter_download_dir }}/node_exporter-sha256sums.txt"
+node_exporter_test_checksum: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

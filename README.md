@@ -154,6 +154,7 @@ Verify that Loki is ready to receive requests:
 ```bash
 curl -fsS http://192.168.0.30:3100/ready
 ```
+
 ### Alertmanager Configuration Validation
 
 The Alertmanager role validates its rendered configuration before deploying it to the active configuration path.
@@ -191,6 +192,21 @@ Verify Alertmanager's health endpoint:
 ```bash
 curl -fsS http://192.168.0.30:9093/-/healthy
 ```
+
+### Release Archive Checksum Verification
+
+Release archives are verified against SHA-256 checksums published in the
+official release checksum manifest before extraction.
+
+The Node Exporter role:
+
+- Downloads the official checksum manifest.
+- Extracts the checksum corresponding to the selected version and architecture.
+- Validates that the checksum is present and correctly formatted.
+- Downloads the release archive with Ansible's checksum verification enabled.
+- Extracts the archive only after successful verification.
+
+This helps detect corrupted or tampered release archives before installation.
 
 ## Requirements
 
@@ -327,7 +343,7 @@ Screenshots captured while building and testing the lab, in run order.
 | Journald | [deployment](docs/journald-ansible-deployment.png), [configuration](docs/journald-configuration.png) |
 | Node Exporter | [firewall port](docs/node-exporter-firewall-port.png), [idempotency](docs/node-exporter-idempotency.png) |
 | Loki | [deployment](docs/loki-ansible-deployment.png) |
-| Prometheus | [deployment](docs/prometheus-ansible-deployment.png), [configuration](docs/prometheus-configuration.png), [configuration validation](docs/prometheus-config-validation.png), [invalid configuration rejected](docs/prometheus-invalid-config-rejected.png) | |
+| Prometheus | [deployment](docs/prometheus-ansible-deployment.png), [configuration](docs/prometheus-configuration.png), [configuration validation](docs/prometheus-config-validation.png), [invalid configuration rejected](docs/prometheus-invalid-config-rejected.png), [verified checksum](docs/node-exporter-checksum-verification.png), [rejected checksum](node-exporter-checksum-rejection.png) | |
 | Alertmanager | [deployment](docs/alertmanager-deployment.png), [configuration validation](docs/alertmanager-config-validation.png), [invalid configuration rejected](docs/alertmanager-invalid-config-rejected.png) |
 | Grafana | [deployment](docs/grafana-deployment.png) |
 | Alloy | [deployment](docs/alloy-ansible-deployment.png), [configuration](docs/alloy-configuration.png), [Loki configuration](docs/alloy-loki-configuration.png), [service](docs/alloy-service.png), [idempotency](docs/alloy-ansible-idempotency.png) |

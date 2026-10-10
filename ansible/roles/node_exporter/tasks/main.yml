@@ -11,17 +11,45 @@
     shell: /usr/sbin/nologin
     create_home: false
 
-- name: Download Node Exporter archive
+- name: Download Node Exporter checksum manifest
   ansible.builtin.get_url:
-    url: "{{ node_exporter_download_url }}"
-    dest: "{{ node_exporter_download_dir }}/node_exporter.tar.gz"
+    url: "{{ node_exporter_checksum_url }}"
+    dest: "{{ node_exporter_checksum_file }}"
     mode: "0644"
 
-- name: Extract Node Exporter archive
+- name: Read Node Exporter archive checksum
+  ansible.builtin.command:
+    argv:
+      - awk
+      - "-v"
+      - "filename={{ node_exporter_archive_filename }}"
+      - '$2 == filename { print $1 }'
+      - "{{ node_exporter_checksum_file }}"
+  register: node_exporter_expected_checksum
+  changed_when: false
+
+- name: Validate Node Exporter archive checksum entry
+  ansible.builtin.assert:
+    that:
+      - node_exporter_expected_checksum.stdout | length == 64
+      - node_exporter_expected_checksum.stdout is match('^[a-fA-F0-9]{64}$')
+    fail_msg: >-
+      No valid SHA-256 checksum was found for
+      {{ node_exporter_archive_filename }} in the official checksum manifest.
+
+- name: Download and verify Node Exporter archive
+  ansible.builtin.get_url:
+    url: "{{ node_exporter_download_url }}"
+    dest: "{{ node_exporter_archive_path }}"
+    checksum: "sha256:{{ node_exporter_expected_checksum.stdout }}"
+    mode: "0644"
+
+- name: Extract verified Node Exporter archive
   ansible.builtin.unarchive:
-    src: "{{ node_exporter_download_dir }}/node_exporter.tar.gz"
+    src: "{{ node_exporter_archive_path }}"
     dest: "{{ node_exporter_download_dir }}"
     remote_src: true
+    creates: "{{ node_exporter_download_dir }}/node_exporter-{{ node_exporter_version }}.linux-{{ node_exporter_arch }}"
 
 - name: Install Node Exporter binary
   ansible.builtin.copy:
