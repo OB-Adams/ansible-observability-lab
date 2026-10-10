@@ -1,0 +1,67 @@
+name: Ansible CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Ansible
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ansible
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ansible-core
+
+      - name: Install required collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: Create Ansible Vault password file
+        env:
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          set -eu
+          test -n "$ANSIBLE_VAULT_PASSWORD"
+          install -d -m 700 "$HOME/.ansible"
+          umask 077
+          printf '%s' "$ANSIBLE_VAULT_PASSWORD" > "$HOME/.ansible/vault_password"
+
+      - name: Check individual playbook syntax
+        run: |
+          set -e
+
+          for playbook in playbooks/*.yml; do
+            echo "::group::Checking ${playbook}"
+            ansible-playbook "${playbook}" --vault-password-file "$HOME/.ansible/vault_password" --syntax-check
+            echo "::endgroup::"
+          done
+
+      - name: Check master playbook syntax
+        run: ansible-playbook site.yml --vault-password-file "$HOME/.ansible/vault_password" --syntax-check
+
+      - name: Remove Vault password file
+        if: always()
+        working-directory: .
+        run: rm -f "$HOME/.ansible/vault_password"
