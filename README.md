@@ -108,7 +108,7 @@ Each role follows the standard layout (`tasks/`, `defaults/`, `handlers/`, `temp
 | `node_exporter` | all | Verifies and installs the release binary under a dedicated system user with a systemd unit, and opens port 9100 |
 | `alloy` | all | Adds the Grafana package repo for the OS family, installs Alloy, grants it journal access, and deploys a config that reads the journal and pushes to Loki |
 | `loki` | observability | Verifies and installs Loki into a version-specific release directory, validates its configuration before deployment, opens port 3100, and restarts the service when the binary or configuration changes |
-| `prometheus` | observability | Verifies and installs Prometheus and `promtool`, generates scrape targets from the inventory, deploys alert rules, and validates its configuration before deployment |
+| `prometheus` | observability | Verifies and installs Prometheus and `promtool`, generates scrape targets from the inventory, and validates its alert rules and configuration before deployment |
 | `alertmanager` | observability | Verifies and installs Alertmanager and `amtool`, validates its configuration before deployment, and routes alerts to a Discord webhook |
 | `grafana` | observability | Installs Grafana from the official APT repo, sets the admin password, disables sign-up and telemetry, and provisions Prometheus and Loki as data sources |
 
@@ -148,15 +148,16 @@ A missing checksum entry or a mismatched download stops the play before anything
 
 ### Configuration validation
 
-Prometheus, Loki, and Alertmanager each validate their rendered configuration with the service's own tooling before it is deployed:
+Prometheus, Loki, and Alertmanager each validate their configuration with the service's own tooling before it is deployed, and Prometheus also validates its alert rules:
 
-| Service | Validation command |
-| --- | --- |
-| Prometheus | `promtool check config` |
-| Loki | `loki -config.file=<candidate> -verify-config` |
-| Alertmanager | `amtool check-config` |
+| Service | What is validated | Validation command |
+| --- | --- | --- |
+| Prometheus | Main configuration | `promtool check config` |
+| Prometheus | Alert rules | `promtool check rules` |
+| Loki | Configuration | `loki -config.file=<candidate> -verify-config` |
+| Alertmanager | Configuration | `amtool check-config` |
 
-The deployment process for each is:
+Main configurations are deployed through a candidate file:
 
 1. Render the configuration template to a temporary candidate file, readable only by root (the Alertmanager config contains the Discord webhook).
 2. Validate the candidate.
@@ -164,7 +165,9 @@ The deployment process for each is:
 4. Notify the restart handler only when the active configuration actually changed.
 5. Remove the temporary candidate file.
 
-If validation fails, Ansible stops before replacing the active configuration, so the running service keeps its last known good config and an invalid file never triggers a restart. For Prometheus, the alert rules file is deployed before the main configuration, because `promtool` checks that every referenced rule file exists.
+The Prometheus alert rules use Ansible's built-in `validate` option instead: the rules template is rendered to a temporary file, checked with `promtool check rules`, and written to its live path only if the check passes.
+
+If validation fails, Ansible stops before replacing the active file, so the running service keeps its last known good config and an invalid file never triggers a restart. For Prometheus, the validated rules file is deployed before the main configuration, because `promtool` checks that every referenced rule file exists.
 
 Verify the result:
 
@@ -173,6 +176,7 @@ curl -fsS http://192.168.0.30:3100/ready                       # Loki ready
 curl -fsS http://192.168.0.30:9093/-/healthy                   # Alertmanager healthy
 ansible ubuntu -m command -a "/opt/alertmanager/amtool check-config /etc/alertmanager/alertmanager.yml"
 promtool check config /etc/prometheus/prometheus.yml           # on the observability host
+promtool check rules /etc/prometheus/rules/node-alerts.yml     # on the observability host
 ```
 
 ### Loki release directories
@@ -213,16 +217,15 @@ Secrets live in an Ansible Vault file, `inventory/group_vars/observability.yml`.
 | `alertmanager_discord_webhook_url` | `alertmanager` | Discord webhook for alert notifications |
 | `grafana_admin_password` | `grafana` | At least 12 characters and not `admin`; the play refuses to run without it |
 
-`ansible.cfg` does not set a Vault password file, so tell Ansible where the password is. The simplest way is an environment variable:
+`ansible.cfg` points Ansible at a Vault password file, `~/.ansible/vault_password`, so create it before running any playbook:
 
 ```bash
 mkdir -p ~/.ansible
 echo 'your-vault-password' > ~/.ansible/vault_password
 chmod 600 ~/.ansible/vault_password
-export ANSIBLE_VAULT_PASSWORD_FILE=~/.ansible/vault_password
 ```
 
-Or pass `--vault-password-file ~/.ansible/vault_password` (or `--ask-vault-pass`) to each command. Then create the secrets file:
+To use a different location, pass `--vault-password-file <path>` or set `ANSIBLE_VAULT_PASSWORD_FILE`. Then create the secrets file:
 
 ```bash
 ansible-vault create inventory/group_vars/observability.yml   # or `ansible-vault edit` if it exists
@@ -270,6 +273,7 @@ Loki should be up before Alloy so logs have somewhere to go. Every playbook is s
 | Service status | `systemctl status node_exporter alloy` (all hosts); `systemctl status prometheus loki alertmanager grafana-server` (ubuntu) |
 | Prometheus targets | `http://192.168.0.30:9090/targets`, all three `node` targets should be UP |
 | Prometheus configuration | `promtool check config /etc/prometheus/prometheus.yml` on the observability host |
+| Prometheus alert rules | `promtool check rules /etc/prometheus/rules/node-alerts.yml` on the observability host |
 | Loki version | `sudo /opt/loki/loki -version` |
 | Loki ready | `curl http://192.168.0.30:3100/ready` |
 | Alertmanager | `http://192.168.0.30:9093` |
@@ -355,7 +359,6 @@ This is a lab project, and some choices reflect that:
 - **SSH as root** with `host_key_checking = False`, which suits throwaway VMs.
 - **Grafana** listens on all interfaces over plain HTTP.
 - **CI checks syntax only.** It does not lint the roles or run them against hosts.
-- **One inventory address is repeated:** `observability_host` in `inventory/hosts.yml` is a literal IP that repeats the `ubuntu` host's `ansible_host`, so the two are kept in step by hand.
 - **Loki's expected checksum comes from the GitHub API**, which rate-limits unauthenticated requests per address. Occasional lab runs are well within the limit.
 - **One alert rule** (`NodeExporterDown`) and no dashboards as code.
 
@@ -370,6 +373,10 @@ This is a lab project, and some choices reflect that:
 - End-to-end integration of Prometheus, Alertmanager, Loki, Alloy, and Grafana
 - Securing a default-credential service with Vault-managed secrets and an idempotent API-based password change
 - Continuous integration with GitHub Actions, including handling a Vault secret safely
+
+## Related project
+
+[linux-observability-lab](https://github.com/OB-Adams/linux-observability-lab) is a separate project in the same problem space, focused on the monitoring side: a Docker Compose stack with hand-written alert rules, a Grafana dashboard, and an Alloy log pipeline. This repository has a different focus, which is configuration management: native systemd deployments across three distros, verified downloads, validated configuration, and CI. The two use the same tools but are built and configured independently.
 
 ## Author
 
