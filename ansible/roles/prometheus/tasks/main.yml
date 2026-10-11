@@ -110,6 +110,7 @@
     owner: "{{ prometheus_user }}"
     group: "{{ prometheus_group }}"
     mode: "0644"
+    validate: "{{ prometheus_install_dir }}/promtool check rules %s"
   notify: Restart Prometheus
 
 - name: Render Prometheus configuration candidate

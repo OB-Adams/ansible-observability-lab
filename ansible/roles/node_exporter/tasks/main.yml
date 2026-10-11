@@ -60,6 +60,7 @@
     group: "{{ node_exporter_group }}"
     mode: "0755"
     remote_src: true
+  notify: Restart Node Exporter
 
 - name: Install Node Exporter systemd service
   ansible.builtin.template:
