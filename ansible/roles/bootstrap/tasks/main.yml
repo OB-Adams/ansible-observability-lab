@@ -39,7 +39,7 @@
     name: firewalld
     state: started
     enabled: true
-  when: ansible_facts["os_family"] == "RedHat" 
+  when: ansible_facts["os_family"] == "RedHat"
 
 - name: Allow SSH through firewalld
   ansible.posix.firewalld:
@@ -63,4 +63,3 @@
     state: started
     enabled: true
   when: ansible_facts["os_family"] == "Debian"
-

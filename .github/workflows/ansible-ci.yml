@@ -29,39 +29,34 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
 
-      - name: Install Ansible
+      - name: Install Ansible and linting tools
         run: |
           python -m pip install --upgrade pip
-          python -m pip install ansible-core
+          python -m pip install ansible-core ansible-lint
 
       - name: Install required collections
         run: ansible-galaxy collection install -r requirements.yml
 
-      - name: Create Ansible Vault password file
-        env:
-          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
-        run: |
-          set -eu
-          test -n "$ANSIBLE_VAULT_PASSWORD"
-          install -d -m 700 "$HOME/.ansible"
-          umask 077
-          printf '%s' "$ANSIBLE_VAULT_PASSWORD" > "$HOME/.ansible/vault_password"
+      - name: Lint Ansible project
+        run: ansible-lint
 
       - name: Check individual playbook syntax
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           for playbook in playbooks/*.yml; do
+            if [[ ! -f "$playbook" ]]; then
+              echo "No playbooks found in playbooks/"
+              exit 1
+            fi
+
             echo "::group::Checking ${playbook}"
-            ansible-playbook "${playbook}" --vault-password-file "$HOME/.ansible/vault_password" --syntax-check
+            ansible-playbook "$playbook" --syntax-check
             echo "::endgroup::"
           done
 
       - name: Check master playbook syntax
-        run: ansible-playbook site.yml --vault-password-file "$HOME/.ansible/vault_password" --syntax-check
-
-      - name: Remove Vault password file
-        if: always()
-        working-directory: .
-        run: rm -f "$HOME/.ansible/vault_password"
+        run: ansible-playbook site.yml --syntax-check

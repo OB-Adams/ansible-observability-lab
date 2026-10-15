@@ -32,8 +32,9 @@
   when: ansible_facts.os_family == "RedHat"
   block:
     - name: Import Grafana RPM GPG key
-      ansible.builtin.command: "rpm --import {{ grafana_rpm_key_url }}"
-      changed_when: false
+      ansible.builtin.rpm_key:
+        key: "{{ grafana_rpm_key_url }}"
+        state: present
 
     - name: Configure Grafana YUM repository
       ansible.builtin.yum_repository:
@@ -96,4 +97,3 @@
     enabled: true
     state: started
     daemon_reload: true
-
