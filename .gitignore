@@ -1,0 +1,21 @@
+# Secrets and credentials (the Ansible Vault file is intentionally tracked: it is encrypted)
+.vault_pass*
+vault_password*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+.env
+.env.*
+
+# Ansible runtime artifacts
+*.retry
+.ansible/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# macOS
+.DS_Store
