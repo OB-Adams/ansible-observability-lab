@@ -1,1 +1,2 @@
 ssh_port: 22
+admin_user_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIe/PZpwxHu+znrjZU96u8ZdGCtaQvQso7x0lS6C8Zzx ansible-admin@openclaw-lab"

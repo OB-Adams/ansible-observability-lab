@@ -1,0 +1,34 @@
+- name: Assert that an admin public key was provided
+  ansible.builtin.assert:
+    that:
+      - admin_user_public_key | length > 0
+      - admin_user_public_key is match('^ssh-ed25519 ')
+    fail_msg: Set admin_user_public_key to an ssh-ed25519 public key in inventory/group_vars/all.yml.
+
+- name: Ensure sudo is installed
+  ansible.builtin.package:
+    name: sudo
+    state: present
+
+- name: Create the Ansible admin user
+  ansible.builtin.user:
+    name: "{{ admin_user_name }}"
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: Install the Ansible admin public key
+  ansible.posix.authorized_key:
+    user: "{{ admin_user_name }}"
+    key: "{{ admin_user_public_key }}"
+    exclusive: true
+    state: present
+
+- name: Grant passwordless sudo, validated before installation
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/{{ admin_user_name }}"
+    content: "{{ admin_user_name }} ALL=(ALL) NOPASSWD: ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: /usr/sbin/visudo -cf %s

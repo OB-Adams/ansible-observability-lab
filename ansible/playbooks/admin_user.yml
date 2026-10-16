@@ -1,0 +1,6 @@
+- name: Create the Ansible admin user
+  hosts: all
+  become: true
+
+  roles:
+    - admin_user
