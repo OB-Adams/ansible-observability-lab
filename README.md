@@ -1,383 +1,256 @@
-# Ansible Observability Lab
+# OpenClaw Infrastructure Assistant
 
-[![Ansible CI](https://github.com/OB-Adams/ansible-observability-lab/actions/workflows/ansible-ci.yml/badge.svg)](https://github.com/OB-Adams/ansible-observability-lab/actions/workflows/ansible-ci.yml)
+An AI-assisted Linux infrastructure operations project built on top of a self-hosted Ansible observability stack. OpenClaw acts as a conversational agent and tool orchestrator. It connects to a self-hosted observability MCP server to query real Prometheus metrics and Loki logs, then investigates infrastructure health using those tools — without modifying anything.
 
-Ansible automation that deploys a complete observability stack (metrics, logs, dashboards, and alerting) across a small mixed Linux fleet: **Ubuntu**, **Rocky Linux**, and **CentOS**.
+## What this demonstrates
 
-One inventory and a set of role-based playbooks take three fresh hosts to a working pipeline: Node Exporter and Prometheus for metrics, Grafana Alloy and Loki for logs, Grafana for dashboards, and Alertmanager for Discord notifications. Release downloads are checksum-verified, and service configuration is validated before it replaces a live file.
+- Deploying and automating a multi-host Linux observability stack with Ansible (Prometheus, Loki, Grafana, Alertmanager, Node Exporter, Grafana Alloy)
+- Running a self-hosted AI agent (OpenClaw) against a local model (Qwen3 30B via Ollama)
+- Connecting an AI agent to real infrastructure data through MCP tools
+- Enforcing a hardened agent configuration: loopback-only gateway, token auth, tools denied except the approved MCP server, no web access
+- Structured infrastructure investigation: the agent lists services, queries metrics and logs, and summarises findings — and explicitly states when a capability is unavailable rather than inventing results
 
-## Stack
+This is a learning and portfolio project. It is not production-ready.
 
-| Component | Version | Runs on | Purpose |
-| --- | --- | --- | --- |
-| Node Exporter | 1.10.2 | all hosts | Host metrics (port 9100) |
-| Grafana Alloy | latest from Grafana repo | all hosts | Ships systemd journal logs to Loki |
-| systemd-journald | n/a | all hosts | Persistent journal storage |
-| Prometheus | 3.15.0 | observability host | Metrics scraping and alert rules (port 9090) |
-| Alertmanager | 0.28.1 | observability host | Alert routing to Discord (port 9093) |
-| Loki | 3.7.7 | observability host | Central log storage (port 3100) |
-| Grafana | latest from Grafana repo | observability host | Dashboards and log exploration (port 3000) |
+---
+
+## Lab topology
+
+| Host | IP | Role |
+| --- | --- | --- |
+| Ubuntu observability server | 192.168.0.30 | Prometheus, Loki, Grafana, Alertmanager (systemd services) |
+| Rocky Linux node | 192.168.0.10 | Node Exporter, Grafana Alloy |
+| CentOS node | 192.168.0.20 | Node Exporter, Grafana Alloy |
+| OpenClaw VM | 192.168.0.40 | OpenClaw gateway, Ollama (model served from Mac via SSH tunnel) |
+| Mac (M3 Pro) | — | Ansible control node, Ollama host (Qwen3 30B) |
+
+All VMs run in UTM on an Apple Silicon Mac.
+
+---
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph monitored["Monitored hosts: rocky, centos"]
-        NE1[Node Exporter :9100]
-        AL1[Alloy]
-        J1[(journald)]
-        J1 --> AL1
-    end
+```
+Mac (Ansible control)
+  │  SSH
+  ▼
+ansible-admin account on all hosts
+  │  deploys via site.yml
+  ▼
+┌──────────────────────────────────────────────────────┐
+│  Ubuntu 192.168.0.30                                  │
+│  Prometheus :9090  Loki :3100  Grafana :3000          │
+│  Alertmanager :9093  Node Exporter :9100              │
+│  Grafana Alloy (collects journald → Loki)             │
+└──────────────────────────────────────────────────────┘
+         ▲ scrapes Node Exporter             ▲ scrapes
+         │                                   │
+┌────────┴────────┐               ┌──────────┴──────────┐
+│  Rocky :9100    │               │  CentOS :9100        │
+│  Node Exporter  │               │  Node Exporter       │
+│  Alloy          │               │  Alloy               │
+└─────────────────┘               └──────────────────────┘
 
-    subgraph obs["Observability host: ubuntu"]
-        NE2[Node Exporter :9100]
-        AL2[Alloy]
-        PROM[Prometheus :9090]
-        LOKI[Loki :3100]
-        AM[Alertmanager :9093]
-        GRAF[Grafana :3000]
-    end
-
-    NE1 -- scrape --> PROM
-    NE2 -- scrape --> PROM
-    AL1 -- push logs --> LOKI
-    AL2 -- push logs --> LOKI
-    PROM -- alerts --> AM
-    AM -- webhook --> DISCORD[Discord]
-    PROM --> GRAF
-    LOKI --> GRAF
+Mac (Ollama host, Qwen3:30b)
+  │  SSH reverse tunnel :11434
+  ▼
+┌─────────────────────────────────────────────────────┐
+│  OpenClaw VM 192.168.0.40                            │
+│  OpenClaw gateway :18789 (loopback only)             │
+│  SSH tunnels to 192.168.0.30: :9090, :3100           │
+│                                                      │
+│  You ──SSH tunnel──▶ Control UI :18789               │
+│                           │  MCP streamable-HTTP     │
+│                           ▼                          │
+│              (observability-mcp) :3000/mcp                       │
+│         (data sources: Prometheus :9090, Loki :3100)             │
+└─────────────────────────────────────────────────────┘
 ```
 
-## Inventory
+### Trust boundaries
 
-| Host | Group | IP | Role in the lab |
-| --- | --- | --- | --- |
-| `ubuntu` | `observability` | 192.168.0.30 | Runs the server components (Prometheus, Alertmanager, Loki, Grafana) |
-| `rocky` | `monitored` | 192.168.0.10 | Monitored host (RHEL family) |
-| `centos` | `monitored` | 192.168.0.20 | Monitored host (RHEL family) |
+OpenClaw calls the observability MCP server (`@thotischner/observability-mcp`) running on the OpenClaw VM. The MCP server holds the Prometheus and Loki connections. The model never receives Prometheus or Loki credentials directly and never modifies infrastructure. The MCP server is read-only by design.
 
-Agent playbooks (bootstrap, journald, Node Exporter, Alloy) target every host. Server playbooks target only the `observability` group. Prometheus scrape targets and each host's `/etc/hosts` are generated from the inventory, so adding a host there is enough for it to be monitored. The address agents use to reach Loki comes from one inventory variable, `observability_host` in `inventory/hosts.yml`.
+---
 
-## Repository structure
+## Ansible stack
 
-```
-ansible-observability-lab/
-├── README.md
-├── .github/
-│   └── workflows/
-│       └── ansible-ci.yml    # GitHub Actions: syntax checks on every push and PR
-├── docs/                     # screenshots captured during development
-└── ansible/
-    ├── ansible.cfg
-    ├── requirements.yml      # collection dependencies
-    ├── site.yml              # runs every playbook in dependency order
-    ├── inventory/
-    │   ├── hosts.yml         # hosts, groups, and observability_host
-    │   ├── group_vars/
-    │   │   ├── all.yml
-    │   │   └── observability.yml   # Ansible Vault (encrypted secrets)
-    │   └── host_vars/        # per-host hostname and IP variables
-    ├── playbooks/
-    │   ├── bootstrap.yml
-    │   ├── journald.yml
-    │   ├── node_exporter.yml
-    │   ├── loki.yml
-    │   ├── prometheus.yml
-    │   ├── alertmanager.yml
-    │   ├── grafana.yml
-    │   └── alloy.yml
-    └── roles/
-        ├── bootstrap/
-        ├── journald/
-        ├── node_exporter/
-        ├── alloy/
-        ├── loki/
-        ├── prometheus/
-        ├── alertmanager/
-        └── grafana/
-```
+### Roles
 
-Each role follows the standard layout (`tasks/`, `defaults/`, `handlers/`, `templates/`), and every service restart is driven by a handler so services restart only when their configuration or binary changes.
+| Role | What it deploys |
+| --- | --- |
+| `bootstrap` | ufw, base packages, SSH hardening |
+| `journald` | persistent journal, size limits |
+| `node_exporter` | Node Exporter 1.10.2 as a systemd service |
+| `loki` | Loki 3.7.7 as a systemd service |
+| `prometheus` | Prometheus 3.15.0, scrape config, alert rules |
+| `alertmanager` | Alertmanager 0.28.1, Discord webhook |
+| `grafana` | Grafana latest from vendor repo |
+| `alloy` | Grafana Alloy, collects journald logs and pushes to Loki |
+| `admin_user` | Non-root `ansible-admin` account with key-only SSH and validated sudoers |
 
-## Roles
-
-| Role | Targets | What it does |
-| --- | --- | --- |
-| `bootstrap` | all | Installs baseline packages, sets the hostname, builds `/etc/hosts` from the inventory, creates working directories, and enables the host firewall (`firewalld` or `ufw`) with SSH allowed |
-| `journald` | all | Enables persistent journal storage with size limits (1G persistent, 200M runtime) |
-| `node_exporter` | all | Verifies and installs the release binary under a dedicated system user with a systemd unit, and opens port 9100 |
-| `alloy` | all | Adds the Grafana package repo for the OS family, installs Alloy, grants it journal access, and deploys a config that reads the journal and pushes to Loki |
-| `loki` | observability | Verifies and installs Loki into a version-specific release directory, validates its configuration before deployment, opens port 3100, and restarts the service when the binary or configuration changes |
-| `prometheus` | observability | Verifies and installs Prometheus and `promtool`, generates scrape targets from the inventory, and validates its alert rules and configuration before deployment |
-| `alertmanager` | observability | Verifies and installs Alertmanager and `amtool`, validates its configuration before deployment, and routes alerts to a Discord webhook |
-| `grafana` | observability | Installs Grafana from the official APT repo, sets the admin password, disables sign-up and telemetry, and provisions Prometheus and Loki as data sources |
-
-### Cross-distro handling
-
-The same roles work on Debian-family and RHEL-family hosts by branching on `ansible_facts.os_family`:
-
-- **Package repositories:** `deb822_repository` and `apt` on Ubuntu, `yum_repository` and `dnf` on Rocky and CentOS
-- **Firewall:** `ufw` on Ubuntu, `firewalld` on Rocky and CentOS
-- **CPU architecture:** the `amd64` or `arm64` release build is chosen automatically from `ansible_facts['architecture']`, so the lab runs on x86_64 and ARM hosts alike
-
-### Alerting
-
-A starter rule, `NodeExporterDown`, fires at critical severity when any Node Exporter target is unreachable for one minute. Alertmanager delivers it to Discord, including a resolved notification when the target recovers.
-
-### Logs
-
-Alloy reads the systemd journal (the last 12 hours on startup) and pushes entries to Loki, labelled with `host` (the inventory hostname) and `component="journald"`.
-
-## Safety checks
-
-Two checks protect the stack from bad inputs: downloads are verified before they are installed, and configuration is validated before it replaces a live file.
-
-### Release archive checksum verification
-
-Release archives for all four downloaded components (Node Exporter, Prometheus, Alertmanager, Loki) are verified against SHA-256 checksums published by the upstream project, and are extracted only after verification succeeds.
-
-- **Node Exporter, Prometheus, and Alertmanager:**
-  1. Download the official `sha256sums.txt` manifest for the pinned version.
-  2. Extract the checksum for the exact archive name (version and architecture).
-  3. Assert that a well-formed 64-character SHA-256 value was found.
-  4. Download the archive with Ansible's `checksum` verification enabled.
-  5. Extract the archive only if the checksum matched.
-- **Loki:** the expected digest is read from the GitHub release metadata for the pinned version (the asset's SHA-256 `digest`), validated for format, and used to verify the download.
-
-A missing checksum entry or a mismatched download stops the play before anything is installed.
-
-### Configuration validation
-
-Prometheus, Loki, and Alertmanager each validate their configuration with the service's own tooling before it is deployed, and Prometheus also validates its alert rules:
-
-| Service | What is validated | Validation command |
-| --- | --- | --- |
-| Prometheus | Main configuration | `promtool check config` |
-| Prometheus | Alert rules | `promtool check rules` |
-| Loki | Configuration | `loki -config.file=<candidate> -verify-config` |
-| Alertmanager | Configuration | `amtool check-config` |
-
-Main configurations are deployed through a candidate file:
-
-1. Render the configuration template to a temporary candidate file, readable only by root (the Alertmanager config contains the Discord webhook).
-2. Validate the candidate.
-3. Copy the candidate over the active configuration only if validation succeeds.
-4. Notify the restart handler only when the active configuration actually changed.
-5. Remove the temporary candidate file.
-
-The Prometheus alert rules use Ansible's built-in `validate` option instead: the rules template is rendered to a temporary file, checked with `promtool check rules`, and written to its live path only if the check passes.
-
-If validation fails, Ansible stops before replacing the active file, so the running service keeps its last known good config and an invalid file never triggers a restart. For Prometheus, the validated rules file is deployed before the main configuration, because `promtool` checks that every referenced rule file exists.
-
-Verify the result:
+### Running the stack
 
 ```bash
-curl -fsS http://192.168.0.30:3100/ready                       # Loki ready
-curl -fsS http://192.168.0.30:9093/-/healthy                   # Alertmanager healthy
-ansible ubuntu -m command -a "/opt/alertmanager/amtool check-config /etc/alertmanager/alertmanager.yml"
-promtool check config /etc/prometheus/prometheus.yml           # on the observability host
-promtool check rules /etc/prometheus/rules/node-alerts.yml     # on the observability host
-```
-
-### Loki release directories
-
-Loki is installed into a version-specific directory (`/opt/loki/releases/<version>`), and the active binary (`/opt/loki/loki`) is copied from it. Changing `loki_version` installs the new release alongside the old one, and the Loki handler restarts the service when the binary changes. Check the running version with:
-
-```bash
-sudo /opt/loki/loki -version
-```
-
-## Continuous integration
-
-A GitHub Actions workflow (`.github/workflows/ansible-ci.yml`) runs on every push and pull request to `main`, and can be started manually. It:
-
-1. Installs `ansible-core` and the collections in `requirements.yml`.
-2. Writes the Vault password from the repository secret `ANSIBLE_VAULT_PASSWORD` to a temporary file.
-3. Runs `ansible-playbook --syntax-check` on every playbook in `playbooks/` and on `site.yml`.
-4. Removes the temporary password file, even if an earlier step failed.
-
-The workflow checks syntax only: it does not lint the code or run the playbooks against hosts. To use it on a fork, add your own `ANSIBLE_VAULT_PASSWORD` secret under the repository's Actions secrets settings.
-
-## Requirements
-
-- **Control node:** `ansible-core` 2.15 or newer (the roles use `deb822_repository`)
-- **Collections:**
-  ```bash
-  ansible-galaxy collection install -r requirements.yml
-  ```
-- **Targets:** Ubuntu, Rocky Linux, and CentOS hosts reachable over SSH, with internet access to download release binaries from GitHub and packages from Grafana's repositories
-- **Architecture:** x86_64 and aarch64 are both supported
-
-## Secrets
-
-Secrets live in an Ansible Vault file, `inventory/group_vars/observability.yml`. It must define:
-
-| Variable | Used by | Notes |
-| --- | --- | --- |
-| `alertmanager_discord_webhook_url` | `alertmanager` | Discord webhook for alert notifications |
-| `grafana_admin_password` | `grafana` | At least 12 characters and not `admin`; the play refuses to run without it |
-
-`ansible.cfg` points Ansible at a Vault password file, `~/.ansible/vault_password`, so create it before running any playbook:
-
-```bash
-mkdir -p ~/.ansible
-echo 'your-vault-password' > ~/.ansible/vault_password
-chmod 600 ~/.ansible/vault_password
-```
-
-To use a different location, pass `--vault-password-file <path>` or set `ANSIBLE_VAULT_PASSWORD_FILE`. Then create the secrets file:
-
-```bash
-ansible-vault create inventory/group_vars/observability.yml   # or `ansible-vault edit` if it exists
-# add:  alertmanager_discord_webhook_url: "https://discord.com/api/webhooks/..."
-#       grafana_admin_password: "a-long-unique-password"
-```
-
-The `grafana` role sets the admin password through `grafana.ini` on fresh installs, and also through Grafana's API, so an existing install still using the default `admin/admin` login is updated on the next run.
-
-## Usage
-
-```bash
-git clone https://github.com/OB-Adams/ansible-observability-lab.git
-cd ansible-observability-lab/ansible
-
-# Check connectivity
-ansible all -m ping
-```
-
-Run everything in dependency order with one command:
-
-```bash
+cd ansible
 ansible-playbook site.yml
 ```
 
-Or run the playbooks one at a time, in this order:
+Re-running is idempotent. Release archives are checksum-verified. Service configs are validated in a candidate file before replacing the live one.
 
-```bash
-ansible-playbook playbooks/bootstrap.yml       # 1. baseline, hostnames, firewalls
-ansible-playbook playbooks/journald.yml        # 2. persistent journal
-ansible-playbook playbooks/node_exporter.yml   # 3. metrics agent on every host
-ansible-playbook playbooks/loki.yml            # 4. log store
-ansible-playbook playbooks/prometheus.yml      # 5. metrics server and alert rules
-ansible-playbook playbooks/alertmanager.yml    # 6. Discord alerting
-ansible-playbook playbooks/grafana.yml         # 7. dashboards and data sources
-ansible-playbook playbooks/alloy.yml           # 8. log shipping on every host
+### Inventory
+
+Three hosts in two groups:
+
+```
+observability → ubuntu (192.168.0.30)
+monitored     → rocky  (192.168.0.10)
+              → centos (192.168.0.20)
 ```
 
-Loki should be up before Alloy so logs have somewhere to go. Every playbook is safe to re-run.
+`observability_host` in `inventory/hosts.yml` drives Alloy's Loki push URL and Prometheus's remote scrape targets. No address is hardcoded in role templates.
 
-## Verification
+### Secrets
 
-| Check | Command or URL |
+A single Ansible Vault file at `ansible/inventory/group_vars/observability.yml` holds the Grafana admin password and Discord webhook URL. The vault password is never committed.
+
+---
+
+## OpenClaw setup
+
+OpenClaw runs on the dedicated VM at 192.168.0.40 under a non-root `openclaw` user. The model is Qwen3 30B served by Ollama on the Mac and exposed to the VM through an SSH reverse tunnel.
+
+Full setup steps are in [docs/openclaw-setup.md](docs/openclaw-setup.md).
+
+### Hardened configuration
+
+- Gateway binds to `127.0.0.1:18789` only
+- Token authentication required
+- Tool profile: `messaging` with web, filesystem, exec, runtime, and automation groups denied
+- Elevated mode disabled
+- No channels, no web search
+
+### MCP integration
+
+`@thotischner/observability-mcp` is a standalone MCP server that reads from Prometheus and Loki. It exposes its own UI on port 3000 and the MCP endpoint at `/mcp`. Register it in OpenClaw:
+
+```json
+"mcp": {
+  "servers": {
+    "observability": {
+      "url": "http://127.0.0.1:3000/mcp",
+      "transport": "streamable-http",
+      "enabled": true,
+      "connectionTimeoutMs": 5000,
+      "requestTimeoutMs": 20000
+    }
+  }
+}
+```
+
+The observability MCP's data sources (Prometheus at `http://localhost:9090`, Loki at `http://localhost:3100`) are reachable on the OpenClaw VM through SSH port forwards from the Mac:
+
+```bash
+ssh -N \
+  -L 127.0.0.1:9090:127.0.0.1:9090 \
+  -L 127.0.0.1:3100:127.0.0.1:3100 \
+  openclaw@192.168.0.30
+```
+
+---
+
+## Sample investigation
+
+**Prompt sent to OpenClaw:**
+
+> Use the observability MCP tools to investigate the current state of my infrastructure.
+> 1. Check service health.
+> 2. List the monitored services and available data sources.
+> 3. Retrieve relevant metrics and logs for any unhealthy services.
+> 4. Check for anomalies.
+> 5. Summarise the findings and identify any potential incidents.
+>
+> Use the available MCP tools directly. Do not invent results if data is unavailable. Do not modify infrastructure or execute remediation.
+
+**Tools called by the agent:**
+
+1. `observability__list_services` — listed node, prometheus, journald
+2. `observability__list_sources` — confirmed prometheus-source (up, 11ms) and Loki-source (up, 9ms)
+3. `observability__query_metrics` — retrieved CPU metrics for the node service
+
+**Result summary produced by the agent:**
+
+- All monitored services and data sources up
+- Node CPU stable (avg 20.2%, max 28.9% over last 15 minutes)
+- No anomalies detected
+- No anomaly detection tool available — explicitly noted, not fabricated
+- No remediation executed
+
+See `docs/screenshots/M2-openclaw-infrastructure-health-report.png`.
+
+---
+
+## Security notes and limitations
+
+- **Prometheus and Loki have no authentication.** Access is controlled by ufw: port 9090 is not open to the LAN; 3100 is open but only reachable via the SSH tunnel in this setup.
+- **The observability MCP exposes Prometheus and Loki query capability.** Unlike a purpose-built integration with a fixed allowlist, it can run arbitrary queries. This is a trade-off between simplicity and control.
+- **Ollama has no authentication** on the Mac. The reverse tunnel keeps it off the LAN.
+- **Ansible connects as `ansible-admin`** with passwordless sudo. Root SSH remains enabled as a fallback during the lab lifetime.
+- **Host key checking is disabled** in `ansible.cfg`. Acceptable for a closed local lab; not for any shared or internet-facing environment.
+- **OpenClaw runs with a hardened profile** but the model is 30B parameters. Smaller models are more susceptible to prompt injection through log content. The MCP endpoint does not enforce input sanitisation.
+- **The OpenClaw VM and the model tunnel must both be running** for the assistant to work. Neither restarts automatically on reboot without further configuration.
+
+---
+
+## Tooling versions
+
+| Tool | Version |
 | --- | --- |
-| Service status | `systemctl status node_exporter alloy` (all hosts); `systemctl status prometheus loki alertmanager grafana-server` (ubuntu) |
-| Prometheus targets | `http://192.168.0.30:9090/targets`, all three `node` targets should be UP |
-| Prometheus configuration | `promtool check config /etc/prometheus/prometheus.yml` on the observability host |
-| Prometheus alert rules | `promtool check rules /etc/prometheus/rules/node-alerts.yml` on the observability host |
-| Loki version | `sudo /opt/loki/loki -version` |
-| Loki ready | `curl http://192.168.0.30:3100/ready` |
-| Alertmanager | `http://192.168.0.30:9093` |
-| Alertmanager health | `curl -fsS http://192.168.0.30:9093/-/healthy` |
-| Alertmanager configuration | `/opt/alertmanager/amtool check-config /etc/alertmanager/alertmanager.yml` on the observability host |
-| Grafana | `http://192.168.0.30:3000`, log in as `admin` with your vaulted password; both data sources are provisioned |
-| Default login rejected | `curl -s -o /dev/null -w "%{http_code}" -u admin:admin http://192.168.0.30:3000/api/user` returns `401` |
-| Logs in Grafana (Explore, Loki) | `{component="journald", host="rocky"}` |
-| Test the alert | `sudo systemctl stop node_exporter` on a host, wait about a minute, and check Discord |
+| Prometheus | 3.15.0 |
+| Loki | 3.7.7 |
+| Alertmanager | 0.28.1 |
+| Node Exporter | 1.10.2 |
+| OpenClaw | 2026.10.4 |
+| Qwen3 (Ollama) | 30B |
+| ansible-core | verified clean with ansible-lint production profile, 0 failures |
 
-## Deployment walkthrough
+---
 
-Screenshots captured while building and testing the lab, in run order.
+## Repository layout
 
-### 1. Connectivity and baseline
+```
+ansible-observability-lab/
+├── ansible/
+│   ├── ansible.cfg
+│   ├── site.yml
+│   ├── inventory/
+│   │   ├── hosts.yml
+│   │   └── group_vars/
+│   ├── playbooks/
+│   │   ├── admin_user.yml
+│   │   └── ...
+│   └── roles/
+│       ├── admin_user/
+│       ├── alertmanager/
+│       ├── alloy/
+│       ├── bootstrap/
+│       ├── grafana/
+│       ├── journald/
+│       ├── loki/
+│       ├── node_exporter/
+│       └── prometheus/
+├── docs/
+│   ├── openclaw-setup.md
+│   └── screenshots/
+├── .gitignore
+└── README.md
+```
 
-![Ansible reaching every host in the inventory](docs/ansible-connectivity.png)
+---
 
-![Host firewall configured by the bootstrap role](docs/bootstrap-firewall.png)
+## Branches
 
-### 2. Metrics: Node Exporter and Prometheus
-
-![Node Exporter running as a systemd service](docs/node-exporter-service.png)
-
-![Prometheus targets page showing the scraped hosts](docs/prometheus-targets.png)
-
-![Alert rules loaded in Prometheus](docs/prometheus-alert-rules.png)
-
-### 3. Logs: Loki and Alloy
-
-![Loki reporting ready](docs/loki-service-ready.png)
-
-![Verifying the Alloy deployment](docs/alloy-deployment-verification.png)
-
-### 4. Dashboards and alerting: Grafana and Alertmanager
-
-![Grafana data sources provisioned by Ansible](docs/grafana-datasources-deployment.png)
-
-![Alerts firing](docs/alerts-firing.png)
-
-### 5. Safety checks in action
-
-**Checksum verification:** a matching archive is accepted, and a mismatching one is rejected.
-
-![Node Exporter archive verified against the official checksum](docs/node-exporter-checksum-verification.png)
-
-![Node Exporter archive rejected on a checksum mismatch](docs/node-exporter-checksum-rejection.png)
-
-**Configuration validation:** a valid Prometheus configuration is deployed, and an invalid one is rejected before it reaches the live file.
-
-![Prometheus configuration validated before deployment](docs/prometheus-config-validation.png)
-
-![Invalid Prometheus configuration rejected before deployment](docs/prometheus-invalid-config-rejected.png)
-
-**Loki version change:** the pinned version is changed and the new release is installed.
-
-![Changing the pinned Loki version](docs/loki-version-change.png)
-
-### 6. Idempotency
-
-![A full re-run of the playbooks making no changes](docs/final-ansible-idempotency.png)
-
-<details>
-<summary>More screenshots</summary>
-
-| Stage | Screenshots |
+| Branch | Contents |
 | --- | --- |
-| Bootstrap | [baseline](docs/bootstrap-baseline.png), [host configuration](docs/bootstrap-host-configuration.png), [idempotency](docs/bootstrap-idempotency.png) |
-| Journald | [deployment](docs/journald-ansible-deployment.png), [configuration](docs/journald-configuration.png) |
-| Node Exporter | [firewall port](docs/node-exporter-firewall-port.png), [idempotency](docs/node-exporter-idempotency.png) |
-| Loki | [deployment](docs/loki-ansible-deployment.png), [checksum verification](docs/loki-checksum-verification.png), [configuration validation](docs/loki-config-validation.png), [invalid configuration rejected](docs/loki-invalid-config-rejected.png) |
-| Prometheus | [deployment](docs/prometheus-ansible-deployment.png), [configuration](docs/prometheus-configuration.png), [checksum verification](docs/prometheus-checksum-verification.png) |
-| Alertmanager | [deployment](docs/alertmanager-deployment.png), [checksum verification](docs/alertmanager-checksum-verification.png), [configuration validation](docs/alertmanager-config-validation.png), [invalid configuration rejected](docs/alertmanager-invalid-config-rejected.png) |
-| Grafana | [deployment](docs/grafana-deployment.png) |
-| Alloy | [deployment](docs/alloy-ansible-deployment.png), [configuration](docs/alloy-configuration.png), [Loki configuration](docs/alloy-loki-configuration.png), [service](docs/alloy-service.png), [idempotency](docs/alloy-ansible-idempotency.png) |
-
-</details>
-
-## Design notes and limitations
-
-This is a lab project, and some choices reflect that:
-
-- **SSH as root** with `host_key_checking = False`, which suits throwaway VMs.
-- **Grafana** listens on all interfaces over plain HTTP.
-- **CI checks syntax only.** It does not lint the roles or run them against hosts.
-- **Loki's expected checksum comes from the GitHub API**, which rate-limits unauthenticated requests per address. Occasional lab runs are well within the limit.
-- **One alert rule** (`NodeExporterDown`) and no dashboards as code.
-
-## Skills demonstrated
-
-- Role-based Ansible with handlers, templates, defaults, and Vault
-- Managing a mixed Debian and RHEL fleet from one codebase, including CPU architecture detection
-- Installing software from release tarballs and vendor repositories with dedicated system users and systemd units
-- Supply-chain hygiene: verifying release downloads against published SHA-256 checksums
-- Safe configuration rollout: validating with each service's own tooling before a live file is replaced or a service restarts
-- Host firewall automation (`ufw` and `firewalld`)
-- End-to-end integration of Prometheus, Alertmanager, Loki, Alloy, and Grafana
-- Securing a default-credential service with Vault-managed secrets and an idempotent API-based password change
-- Continuous integration with GitHub Actions, including handling a Vault secret safely
-
-## Related project
-
-[linux-observability-lab](https://github.com/OB-Adams/linux-observability-lab) is a separate project in the same problem space, focused on the monitoring side: a Docker Compose stack with hand-written alert rules, a Grafana dashboard, and an Alloy log pipeline. This repository has a different focus, which is configuration management: native systemd deployments across three distros, verified downloads, validated configuration, and CI. The two use the same tools but are built and configured independently.
-
-## Author
-
-**Ebenezer Obiri Adams** ([@OB-Adams](https://github.com/OB-Adams))
+| `main` | Original Ansible observability stack |
+| `openclaw` | improvements (admin_user role, .gitignore, ansible-lint clean) + this documentation |
