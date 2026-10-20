@@ -65,7 +65,7 @@ ansible-observability-lab/
 ├── README.md
 ├── .github/
 │   └── workflows/
-│       └── ansible-ci.yml    # GitHub Actions: syntax checks on every push and PR
+│       └── ansible-ci.yml    # GitHub Actions: lint and syntax checks on every push and PR
 ├── docs/                     # screenshots captured during development
 └── ansible/
     ├── ansible.cfg
@@ -191,12 +191,13 @@ sudo /opt/loki/loki -version
 
 A GitHub Actions workflow (`.github/workflows/ansible-ci.yml`) runs on every push and pull request to `main`, and can be started manually. It:
 
-1. Installs `ansible-core` and the collections in `requirements.yml`.
+1. Installs `ansible-core`, `ansible-lint`, and the collections in `requirements.yml`.
 2. Writes the Vault password from the repository secret `ANSIBLE_VAULT_PASSWORD` to a temporary file.
-3. Runs `ansible-playbook --syntax-check` on every playbook in `playbooks/` and on `site.yml`.
-4. Removes the temporary password file, even if an earlier step failed.
+3. Runs `ansible-lint` on the Ansible project, using the `min` profile set in `ansible/.ansible-lint`.
+4. Runs `ansible-playbook --syntax-check` on every playbook in `playbooks/` and on `site.yml`.
+5. Removes the temporary password file, even if an earlier step failed.
 
-The workflow checks syntax only: it does not lint the code or run the playbooks against hosts. To use it on a fork, add your own `ANSIBLE_VAULT_PASSWORD` secret under the repository's Actions secrets settings.
+The workflow lints and syntax-checks the code, but it does not run the playbooks against hosts. The lint step uses the `min` profile, the least strict ansible-lint profile, so it catches basic problems rather than enforcing every style rule. To use the workflow on a fork, add your own `ANSIBLE_VAULT_PASSWORD` secret under the repository's Actions secrets settings.
 
 ## Requirements
 
@@ -358,7 +359,7 @@ This is a lab project, and some choices reflect that:
 
 - **SSH as root** with `host_key_checking = False`, which suits throwaway VMs.
 - **Grafana** listens on all interfaces over plain HTTP.
-- **CI checks syntax only.** It does not lint the roles or run them against hosts.
+- **CI lints and syntax-checks only.** It runs `ansible-lint` with the `min` profile and `--syntax-check`, but does not run the roles against hosts.
 - **Loki's expected checksum comes from the GitHub API**, which rate-limits unauthenticated requests per address. Occasional lab runs are well within the limit.
 - **One alert rule** (`NodeExporterDown`) and no dashboards as code.
 
@@ -372,7 +373,7 @@ This is a lab project, and some choices reflect that:
 - Host firewall automation (`ufw` and `firewalld`)
 - End-to-end integration of Prometheus, Alertmanager, Loki, Alloy, and Grafana
 - Securing a default-credential service with Vault-managed secrets and an idempotent API-based password change
-- Continuous integration with GitHub Actions, including handling a Vault secret safely
+- Continuous integration with GitHub Actions: `ansible-lint` and syntax checks, including handling a Vault secret safely
 
 ## Related project
 
