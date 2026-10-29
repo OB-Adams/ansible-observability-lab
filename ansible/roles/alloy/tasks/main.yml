@@ -14,7 +14,7 @@
         uris: https://apt.grafana.com
         suites: stable
         components: main
-        signed_by: "{{ grafana_apt_key_url }}"
+        signed_by: "{{ alloy_grafana_apt_key_url }}"
         state: present
 
     - name: Update APT package cache
@@ -33,7 +33,7 @@
   block:
     - name: Import Grafana RPM GPG key
       ansible.builtin.rpm_key:
-        key: "{{ grafana_rpm_key_url }}"
+        key: "{{ alloy_grafana_rpm_key_url }}"
         state: present
 
     - name: Configure Grafana YUM repository
@@ -44,7 +44,7 @@
         enabled: true
         repo_gpgcheck: true
         gpgcheck: true
-        gpgkey: "{{ grafana_rpm_key_url }}"
+        gpgkey: "{{ alloy_grafana_rpm_key_url }}"
         sslverify: true
         sslcacert: /etc/pki/tls/certs/ca-bundle.crt
 

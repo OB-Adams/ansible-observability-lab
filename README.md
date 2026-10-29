@@ -4,7 +4,7 @@
 
 Ansible automation that deploys a complete observability stack (metrics, logs, dashboards, and alerting) across a small mixed Linux fleet: **Ubuntu**, **Rocky Linux**, and **CentOS**.
 
-One inventory and a set of role-based playbooks take three fresh hosts to a working pipeline: Node Exporter and Prometheus for metrics, Grafana Alloy and Loki for logs, Grafana for dashboards, and Alertmanager for Discord notifications. Release downloads are checksum-verified, and service configuration is validated before it replaces a live file.
+One inventory and a set of role-based playbooks take three fresh hosts to a working pipeline: Node Exporter and Prometheus for metrics, Grafana Alloy and Loki for logs, Grafana for dashboards, and Alertmanager for Discord notifications. Release downloads are checksum-verified, service configuration is validated before it replaces a live file, and Ansible connects through a dedicated non-root `ansible-admin` account.
 
 ## Stack
 
@@ -58,26 +58,31 @@ flowchart LR
 
 Agent playbooks (bootstrap, journald, Node Exporter, Alloy) target every host. Server playbooks target only the `observability` group. Prometheus scrape targets and each host's `/etc/hosts` are generated from the inventory, so adding a host there is enough for it to be monitored. The address agents use to reach Loki comes from one inventory variable, `observability_host` in `inventory/hosts.yml`.
 
+Ansible connects as `ansible-admin` (set by `ansible_user` in `inventory/hosts.yml`), a non-root account created by the `admin_user` role with key-based SSH and sudo.
+
 ## Repository structure
 
 ```
 ansible-observability-lab/
 ├── README.md
+├── .gitignore                # keeps keys, Vault password files, and local artifacts out of Git
 ├── .github/
 │   └── workflows/
 │       └── ansible-ci.yml    # GitHub Actions: lint and syntax checks on every push and PR
 ├── docs/                     # screenshots captured during development
 └── ansible/
     ├── ansible.cfg
+    ├── .ansible-lint         # lint profile: production
     ├── requirements.yml      # collection dependencies
     ├── site.yml              # runs every playbook in dependency order
     ├── inventory/
     │   ├── hosts.yml         # hosts, groups, and observability_host
     │   ├── group_vars/
-    │   │   ├── all.yml
+    │   │   ├── all.yml           # SSH port and the ansible-admin public key
     │   │   └── observability.yml   # Ansible Vault (encrypted secrets)
     │   └── host_vars/        # per-host hostname and IP variables
     ├── playbooks/
+    │   ├── admin_user.yml    # one-time: creates ansible-admin (run as root)
     │   ├── bootstrap.yml
     │   ├── journald.yml
     │   ├── node_exporter.yml
@@ -87,6 +92,7 @@ ansible-observability-lab/
     │   ├── grafana.yml
     │   └── alloy.yml
     └── roles/
+        ├── admin_user/
         ├── bootstrap/
         ├── journald/
         ├── node_exporter/
@@ -103,6 +109,7 @@ Each role follows the standard layout (`tasks/`, `defaults/`, `handlers/`, `temp
 
 | Role | Targets | What it does |
 | --- | --- | --- |
+| `admin_user` | all | Creates the `ansible-admin` account, installs its ed25519 public key as the only authorized key, and grants sudo through a drop-in file that `visudo` validates before it is installed |
 | `bootstrap` | all | Installs baseline packages, sets the hostname, builds `/etc/hosts` from the inventory, creates working directories, and enables the host firewall (`firewalld` or `ufw`) with SSH allowed |
 | `journald` | all | Enables persistent journal storage with size limits (1G persistent, 200M runtime) |
 | `node_exporter` | all | Verifies and installs the release binary under a dedicated system user with a systemd unit, and opens port 9100 |
@@ -193,11 +200,11 @@ A GitHub Actions workflow (`.github/workflows/ansible-ci.yml`) runs on every pus
 
 1. Installs `ansible-core`, `ansible-lint`, and the collections in `requirements.yml`.
 2. Writes the Vault password from the repository secret `ANSIBLE_VAULT_PASSWORD` to a temporary file.
-3. Runs `ansible-lint` on the Ansible project, using the `min` profile set in `ansible/.ansible-lint`.
+3. Runs `ansible-lint` on the Ansible project, using the `production` profile set in `ansible/.ansible-lint`, the strictest built-in profile.
 4. Runs `ansible-playbook --syntax-check` on every playbook in `playbooks/` and on `site.yml`.
 5. Removes the temporary password file, even if an earlier step failed.
 
-The workflow lints and syntax-checks the code, but it does not run the playbooks against hosts. The lint step uses the `min` profile, the least strict ansible-lint profile, so it catches basic problems rather than enforcing every style rule. To use the workflow on a fork, add your own `ANSIBLE_VAULT_PASSWORD` secret under the repository's Actions secrets settings.
+The workflow lints and syntax-checks the code, but it does not run the playbooks against hosts. To use the workflow on a fork, add your own `ANSIBLE_VAULT_PASSWORD` secret under the repository's Actions secrets settings.
 
 ## Requirements
 
@@ -206,7 +213,7 @@ The workflow lints and syntax-checks the code, but it does not run the playbooks
   ```bash
   ansible-galaxy collection install -r requirements.yml
   ```
-- **Targets:** Ubuntu, Rocky Linux, and CentOS hosts reachable over SSH, with internet access to download release binaries from GitHub and packages from Grafana's repositories
+- **Targets:** Ubuntu, Rocky Linux, and CentOS hosts reachable over SSH as root for the one-time account setup, with internet access to download release binaries from GitHub and packages from Grafana's repositories
 - **Architecture:** x86_64 and aarch64 are both supported
 
 ## Secrets
@@ -241,8 +248,28 @@ The `grafana` role sets the admin password through `grafana.ini` on fresh instal
 ```bash
 git clone https://github.com/OB-Adams/ansible-observability-lab.git
 cd ansible-observability-lab/ansible
+```
 
-# Check connectivity
+### First run: create the Ansible account
+
+The playbooks connect as `ansible-admin`, so that account has to exist first. Generate a key pair on the control node and put the public key in `inventory/group_vars/all.yml`:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/openclaw_ansible_admin -C ansible-admin
+# set admin_user_public_key in inventory/group_vars/all.yml to the contents of ~/.ssh/openclaw_ansible_admin.pub
+```
+
+Then run the `admin_user` playbook once as root. Pass the user as an extra variable, because the inventory's `ansible_user` takes precedence over `-u`:
+
+```bash
+ansible-playbook playbooks/admin_user.yml -e ansible_user=root
+# add -e ansible_ssh_private_key_file=<path> if root uses a different key
+```
+
+### Deploy the stack
+
+```bash
+# Check connectivity as ansible-admin
 ansible all -m ping
 ```
 
@@ -272,7 +299,7 @@ Loki should be up before Alloy so logs have somewhere to go. Every playbook is s
 | Check | Command or URL |
 | --- | --- |
 | Service status | `systemctl status node_exporter alloy` (all hosts); `systemctl status prometheus loki alertmanager grafana-server` (ubuntu) |
-| Prometheus targets | `http://192.168.0.30:9090/targets`, all three `node` targets should be UP |
+| Prometheus targets | `http://localhost:9090/targets` through an SSH tunnel (below); all three `node` targets should be UP |
 | Prometheus configuration | `promtool check config /etc/prometheus/prometheus.yml` on the observability host |
 | Prometheus alert rules | `promtool check rules /etc/prometheus/rules/node-alerts.yml` on the observability host |
 | Loki version | `sudo /opt/loki/loki -version` |
@@ -284,6 +311,14 @@ Loki should be up before Alloy so logs have somewhere to go. Every playbook is s
 | Default login rejected | `curl -s -o /dev/null -w "%{http_code}" -u admin:admin http://192.168.0.30:3000/api/user` returns `401` |
 | Logs in Grafana (Explore, Loki) | `{component="journald", host="rocky"}` |
 | Test the alert | `sudo systemctl stop node_exporter` on a host, wait about a minute, and check Discord |
+| Ansible account | `ansible all -m command -a whoami` returns `ansible-admin`; `ansible all -b -m command -a whoami` returns `root` |
+
+The roles open firewall ports for Node Exporter (9100), Loki (3100), Alertmanager (9093), and Grafana (3000). Prometheus (9090) is deliberately not opened to the network. Reach its UI through an SSH tunnel:
+
+```bash
+ssh -N -L 127.0.0.1:9090:127.0.0.1:9090 ansible-admin@192.168.0.30
+# then open http://localhost:9090/targets
+```
 
 ## Deployment walkthrough
 
@@ -294,6 +329,10 @@ Screenshots captured while building and testing the lab, in run order.
 ![Ansible reaching every host in the inventory](docs/ansible-connectivity.png)
 
 ![Host firewall configured by the bootstrap role](docs/bootstrap-firewall.png)
+
+![The ansible-admin account created, with sudo verified](docs/admin-user-sudo-verified.png)
+
+![A full site.yml run connecting as ansible-admin](docs/site-recap-as-ansible-admin.png)
 
 ### 2. Metrics: Node Exporter and Prometheus
 
@@ -342,6 +381,7 @@ Screenshots captured while building and testing the lab, in run order.
 
 | Stage | Screenshots |
 | --- | --- |
+| Ansible account | [ansible-lint baseline](docs/ansible-lint-baseline.png) |
 | Bootstrap | [baseline](docs/bootstrap-baseline.png), [host configuration](docs/bootstrap-host-configuration.png), [idempotency](docs/bootstrap-idempotency.png) |
 | Journald | [deployment](docs/journald-ansible-deployment.png), [configuration](docs/journald-configuration.png) |
 | Node Exporter | [firewall port](docs/node-exporter-firewall-port.png), [idempotency](docs/node-exporter-idempotency.png) |
@@ -357,15 +397,16 @@ Screenshots captured while building and testing the lab, in run order.
 
 This is a lab project, and some choices reflect that:
 
-- **SSH as root** with `host_key_checking = False`, which suits throwaway VMs.
+- **`ansible-admin` has passwordless sudo**, and root SSH is still enabled as a fallback; `host_key_checking = False`, which suits throwaway VMs.
 - **Grafana** listens on all interfaces over plain HTTP.
-- **CI lints and syntax-checks only.** It runs `ansible-lint` with the `min` profile and `--syntax-check`, but does not run the roles against hosts.
+- **CI lints and syntax-checks only.** It runs `ansible-lint` (production profile) and `--syntax-check`, but does not run the roles against hosts.
 - **Loki's expected checksum comes from the GitHub API**, which rate-limits unauthenticated requests per address. Occasional lab runs are well within the limit.
 - **One alert rule** (`NodeExporterDown`) and no dashboards as code.
 
 ## Skills demonstrated
 
 - Role-based Ansible with handlers, templates, defaults, and Vault
+- Running automation through a dedicated non-root account with a single authorized key and `visudo`-validated sudoers
 - Managing a mixed Debian and RHEL fleet from one codebase, including CPU architecture detection
 - Installing software from release tarballs and vendor repositories with dedicated system users and systemd units
 - Supply-chain hygiene: verifying release downloads against published SHA-256 checksums
@@ -373,11 +414,15 @@ This is a lab project, and some choices reflect that:
 - Host firewall automation (`ufw` and `firewalld`)
 - End-to-end integration of Prometheus, Alertmanager, Loki, Alloy, and Grafana
 - Securing a default-credential service with Vault-managed secrets and an idempotent API-based password change
-- Continuous integration with GitHub Actions: `ansible-lint` and syntax checks, including handling a Vault secret safely
+- Continuous integration with GitHub Actions: `ansible-lint` (production profile) and syntax checks, including handling a Vault secret safely
 
 ## Related project
 
 [linux-observability-lab](https://github.com/OB-Adams/linux-observability-lab) is a separate project in the same problem space, focused on the monitoring side: a Docker Compose stack with hand-written alert rules, a Grafana dashboard, and an Alloy log pipeline. This repository has a different focus, which is configuration management: native systemd deployments across three distros, verified downloads, validated configuration, and CI. The two use the same tools but are built and configured independently.
+
+## OpenClaw branch
+
+The [`openclaw` branch](https://github.com/OB-Adams/ansible-observability-lab/tree/openclaw) builds on this stack: an AI agent (OpenClaw, with a local Qwen3 model) queries Prometheus and Loki through an observability MCP server to investigate infrastructure health, read-only and with restricted tools. Its README documents the setup, the security controls, and their limitations.
 
 ## Author
 

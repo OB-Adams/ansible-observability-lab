@@ -8,6 +8,6 @@ alloy_loki_endpoint: "http://{{ observability_host }}:3100/loki/api/v1/push"
 
 alloy_journal_max_age: 12h
 
-grafana_apt_key_url: https://apt.grafana.com/gpg-full.key
+alloy_grafana_apt_key_url: https://apt.grafana.com/gpg-full.key
 
-grafana_rpm_key_url: https://rpm.grafana.com/gpg.key
+alloy_grafana_rpm_key_url: https://rpm.grafana.com/gpg.key
