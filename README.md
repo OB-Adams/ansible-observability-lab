@@ -130,7 +130,7 @@ The observability infrastructure is managed through Ansible roles and a central 
 
 | Role | Responsibility |
 | --- | --- |
-| `bootstrap` | UFW, base packages, and SSH hardening |
+| `bootstrap` | Base packages, hostname, `/etc/hosts`, and the host firewall (`ufw` or `firewalld`) with SSH allowed |
 | `journald` | Persistent system journal and storage limits |
 | `node_exporter` | Node Exporter 1.10.2 systemd service |
 | `loki` | Loki 3.7.7 systemd service |
@@ -172,7 +172,7 @@ monitored
 └── centos    192.168.0.20
 ```
 
-The `observability_host` inventory variable drives the Loki push URL and Prometheus scrape targets. Host addresses are not hardcoded in the relevant role templates.
+The `observability_host` inventory variable drives the Loki push URL, and Prometheus scrape targets are generated from the inventory groups. Host addresses are not hardcoded in the role templates.
 
 ### Secrets management
 
@@ -320,9 +320,9 @@ During the investigation, the agent called the following MCP tools:
 
 | Tool | Purpose |
 | --- | --- |
-| `observability_listservices` | Listed the monitored services |
-| `observability_listsources` | Checked the available data sources |
-| `observability_querymetrics` | Retrieved CPU metrics for the node service |
+| `observability__list_services` | Listed the monitored services |
+| `observability__list_sources` | Checked the available data sources |
+| `observability__query_metrics` | Retrieved CPU metrics for the node service |
 
 The agent reported the Prometheus and Loki data sources as available.
 
@@ -426,7 +426,7 @@ The gateway and forwarded monitoring endpoints use loopback listeners. SSH tunne
 The following limitations remain in the current lab:
 
 - Prometheus and Loki do not have authentication configured.
-- UFW restricts network access to monitoring endpoints. Port `9090` is not open to the LAN, while Loki's port `3100` is intended to be accessed through the SSH tunnel in this setup.
+- Prometheus port `9090` is not opened in UFW, so it is reachable only from the host or through an SSH tunnel. Loki port `3100` is open to the LAN because the Alloy agents on every host push logs to it; the OpenClaw VM reaches it through the tunnel.
 - The observability MCP server supports arbitrary monitoring queries rather than a fixed query allowlist.
 - Ollama has no authentication configured on the Mac. The reverse tunnel keeps the model service off the LAN.
 - Ansible connects as `ansible-admin` with passwordless sudo.
@@ -452,21 +452,25 @@ The project is a learning and portfolio environment, not a production-ready infr
 | Qwen3 via Ollama | 30B |
 | Ansible Core | 2.21.x |
 
-Ansible validation was reported clean under the configured `ansible-lint` production profile, with zero failures.
+`ansible-lint` passes under the `production` profile with zero failures, and the GitHub Actions workflow enforces that profile on every push to `main`.
 
 ## Repository Structure
 
 ```text
 ansible-observability-lab/
+├── .github/workflows/ansible-ci.yml
 ├── ansible/
 │   ├── ansible.cfg
+│   ├── .ansible-lint
+│   ├── requirements.yml
 │   ├── site.yml
 │   ├── inventory/
 │   │   ├── hosts.yml
+│   │   ├── host_vars/
 │   │   └── group_vars/
+│   │       ├── all.yml
 │   │       └── observability.yml
-│   ├── playbooks/
-│   │   └── admin_user.yml
+│   ├── playbooks/            # one playbook per role, plus admin_user.yml
 │   └── roles/
 │       ├── admin_user/
 │       ├── alertmanager/
@@ -494,8 +498,8 @@ The repository also contains the remaining role files, templates, handlers, defa
 
 | Branch | Contents |
 | --- | --- |
-| `main` | Original Ansible observability stack |
-| `openclaw` | Improvements to the administration role, `.gitignore`, Ansible lint validation, and OpenClaw documentation |
+| `main` | The Ansible observability stack: checksum-verified downloads, validated configuration, the `ansible-admin` account, and CI with `ansible-lint` (production profile) |
+| `openclaw` | Everything in `main`, plus the OpenClaw assistant setup, its documentation, and screenshots |
 
 The OpenClaw work builds on the existing observability infrastructure rather than replacing it.
 
