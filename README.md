@@ -262,10 +262,10 @@ The following command illustrates the local forwarding configuration when run on
 ssh -N \
   -L 127.0.0.1:9090:127.0.0.1:9090 \
   -L 127.0.0.1:3100:127.0.0.1:3100 \
-  ansible-admin@192.168.0.30
+  openclaw@192.168.0.30
 ```
 
-The SSH destination account must have appropriate access to the observability server.
+The tunnel connects as `openclaw`, a non-sudo account on the observability server used only for port forwarding. The OpenClaw VM does not hold the `ansible-admin` key, so a compromise of the agent's VM does not grant administrative access to the managed hosts.
 
 The tunnel binds the forwarded ports to loopback on the OpenClaw VM, limiting access through those local listeners.
 
@@ -397,7 +397,7 @@ The audit complements the denied-tool interaction by documenting the resulting s
 | Web search | Disabled |
 | Infrastructure remediation | Not performed by the agent |
 | Monitoring access | Through the observability MCP server |
-| Prometheus and Loki access | Through SSH-forwarded endpoints in this lab |
+| Prometheus and Loki access | Through SSH-forwarded endpoints, as the non-sudo `openclaw` user |
 
 ### Trust boundaries
 
